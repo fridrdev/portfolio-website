@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm create:*)",
+      "Bash(npm init:*)",
+      "Bash(npm install:*)",
+      "Bash(npm run:*)",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(ls /c/Users/RTX30/Desktop/*.png)",
+      "Bash(ls /c/Users/RTX30/Downloads/*.png)",
+      "Bash(git init:*)",
+      "Bash(git remote:*)",
+      "Bash(git config:*)",
+      "Bash(git add:*)"
+    ]
+  }
+}

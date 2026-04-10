@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://oku2jon40l.execute-api.eu-west-3.amazonaws.com/:path*"
+    }
+  ]
+}
