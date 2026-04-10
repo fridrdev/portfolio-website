@@ -5,6 +5,7 @@ import { projects } from '../projects.config.js'
 // Dynamically import project components
 const projectComponents = {
   'vrt-tracing': lazy(() => import('../projects/vrt/VRTProject.jsx')),
+  'proxmox-multisite-poc': lazy(() => import('../projects/proxmox/ProxmoxProject.jsx')),
 }
 
 export default function ProjectPage() {

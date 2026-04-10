@@ -16,5 +16,15 @@ export const projects = [
     // lazy-loaded component – imported dynamically in ProjectPage
     componentPath: './projects/vrt/VRTProject.jsx',
   },
+  {
+    slug: 'proxmox-multisite-poc',
+    title: 'Odisee – Multi-Site Datacenter PoC',
+    shortDescription:
+      'Live VM migratie tussen gesimuleerd datacenter New York en Brussel zonder downtime via IPSec VPN tunnel, Proxmox cluster en real-time monitoring.',
+    badges: ['Proxmox VE', 'pfSense', 'IPSec VPN', 'Grafana', 'Prometheus', 'Python Flask', 'Cloudflare Tunnel', 'React'],
+    school: 'Odisee Hogeschool',
+    date: 'April 2026',
+    accentColor: '#3B82F6',
+  },
   // Add future projects here ↓
 ]
