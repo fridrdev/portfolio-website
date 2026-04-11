@@ -167,9 +167,10 @@ export default function TabLiveDemo() {
   const [lastUpdate,     setLastUpdate]     = useState(null)
   const [countdown,      setCountdown]      = useState(0)      // seconds remaining
 
-  const pollRef      = useRef(null)
-  const countdownRef = useRef(null)
-  const slowWarnRef  = useRef(null)
+  const pollRef       = useRef(null)
+  const countdownRef  = useRef(null)
+  const slowWarnRef   = useRef(null)
+  const confirmPollRef = useRef(null)   // polling na migratie tot node veranderd is
 
   /* ── fetch /status ─────────────────────────────────────────────────────── */
   const fetchStatus = useCallback(async () => {
@@ -310,15 +311,33 @@ export default function TabLiveDemo() {
 
       log(`✅ Migratie geslaagd! VM 100 staat nu op ${dest}`, 'success')
 
-      // Sync cooldown
-      const updated = await fetchStatus()
-      const srvCd = updated?.migration_cooldown?.retry_after_seconds ?? COOLDOWN_SECONDS
-      setCountdown(srvCd)
+      // Direct eerste fetch — zet state meteen met verse data
+      await fetchStatus()
+
+      // Poll elke 3s tot current_node echt veranderd is (max 60s)
+      const deadline = Date.now() + 60_000
+      const confirmLoop = async () => {
+        const fresh = await fetchStatus()           // setStatus() → UI re-rendert
+        if (fresh?.vm?.current_node === dest) {
+          // Node bevestigd — sync cooldown en stop
+          const srvCd = fresh?.migration_cooldown?.retry_after_seconds ?? COOLDOWN_SECONDS
+          setCountdown(srvCd)
+          return
+        }
+        if (Date.now() < deadline) {
+          confirmPollRef.current = setTimeout(confirmLoop, 3_000)
+        } else {
+          // Timeout — stel cooldown in op basis van constante
+          setCountdown(COOLDOWN_SECONDS)
+        }
+      }
+      confirmLoop()
 
     } catch (err) {
       log(`❌ Fout: ${err.message}`, 'error')
     } finally {
       clearTimeout(slowWarnRef.current)
+      clearTimeout(confirmPollRef.current)   // stop confirm-loop als er een fout was
       setMigSlowWarn(false)
       setMigrating(null)
       startPolling(false)
