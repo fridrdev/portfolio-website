@@ -1,10 +1,17 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 
 const BASE = '/api'
+const COOLDOWN_SECONDS = 3600   // 1 uur
 
 /* ─── helpers ──────────────────────────────────────────────────────────────── */
 function ts() {
   return new Date().toLocaleTimeString('nl-BE', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+}
+
+function fmtCountdown(s) {
+  const m = Math.floor(s / 60).toString().padStart(2, '0')
+  const sec = (s % 60).toString().padStart(2, '0')
+  return `${m}:${sec}`
 }
 
 /* ─── Offline banner ───────────────────────────────────────────────────────── */
@@ -17,15 +24,10 @@ function OfflineBanner({ onRetry }) {
         <p className="text-sm text-gray-400 mt-1">
           De Flask API reageert niet. Controleer of de service draait op de flask-api VM.
         </p>
-        <pre className="mt-2 text-xs bg-[#0F1117] rounded p-3 text-emerald-300 overflow-x-auto">
-          {`# Op flask-api VM (via Cloud Shell):
-gcloud compute ssh flask-api --zone=europe-west1-b --project=proxmox-poc
-sudo systemctl status poc-api
+        <pre className="mt-2 text-xs bg-[#0F1117] rounded p-3 text-emerald-300 overflow-x-auto whitespace-pre-wrap">
+{`gcloud compute ssh flask-api --zone=europe-west1-b --project=proxmox-poc
 sudo systemctl restart poc-api`}
         </pre>
-        <p className="text-xs text-gray-600 mt-2">
-          Publiek: <span className="text-blue-400">https://api.fridrdev.uk</span> (Cloudflare Tunnel)
-        </p>
       </div>
       <button
         onClick={onRetry}
@@ -38,23 +40,21 @@ sudo systemctl restart poc-api`}
 }
 
 /* ─── Node card ────────────────────────────────────────────────────────────── */
-function NodeCard({ name, info, isVmHere }) {
-  const online  = info?.status === 'online'
-  const isNy    = name === 'proxmox-ny'
-  const label   = isNy ? '🌆 New York' : '🏛️ Brussel'
-  const zone    = isNy ? 'europe-west1-b' : 'europe-west4-a'
-
+function NodeCard({ name, info }) {
+  const online = info?.status === 'online'
+  const isNy   = name === 'proxmox-ny'
   return (
-    <div className="flex-1 rounded-lg border border-[#2D3148] bg-[#1A1D27] p-4 flex flex-col gap-3">
-      <div className="flex items-center justify-between flex-wrap gap-2">
+    <div className="flex-1 rounded-lg border border-[#2D3148] bg-[#1A1D27] p-4 flex flex-col gap-2">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
         <div>
-          <p className="text-xs text-gray-500">{label}</p>
+          <p className="text-xs text-gray-500">{isNy ? '🌆 New York DC' : '🏛️ Brussels DC'}</p>
           <p className="text-sm font-semibold text-white font-mono">{name}</p>
-          <p className="text-xs text-gray-600 font-mono">{info?.ip ?? '—'} · {zone}</p>
+          <p className="text-xs text-gray-600 font-mono">{info?.ip ?? '—'}</p>
+          <p className="text-xs text-gray-600">{isNy ? 'europe-west1-b' : 'europe-west4-a'}</p>
         </div>
         <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium border ${
           info === undefined
-            ? 'bg-gray-800 text-gray-500 border-gray-600'
+            ? 'bg-gray-800 text-gray-500 border-gray-700'
             : online
               ? 'bg-emerald-900/50 text-emerald-400 border-emerald-700/50'
               : 'bg-red-900/50 text-red-400 border-red-700/50'
@@ -64,19 +64,66 @@ function NodeCard({ name, info, isVmHere }) {
             : online ? 'bg-emerald-400 animate-pulse'
             : 'bg-red-400'
           }`} />
-          {info === undefined ? 'laden…' : online ? 'Online' : 'Offline'}
+          {info === undefined ? 'laden…' : online ? 'ONLINE' : 'OFFLINE'}
+        </span>
+      </div>
+    </div>
+  )
+}
+
+/* ─── VM status card ───────────────────────────────────────────────────────── */
+function VmCard({ vm }) {
+  if (!vm) return null
+  const running = vm.status === 'running'
+  return (
+    <div className="rounded-lg border border-[#2D3148] bg-[#1A1D27] p-4 flex flex-col gap-3">
+      <div className="flex items-start justify-between flex-wrap gap-3">
+        <div>
+          <p className="text-xs text-gray-500 mb-0.5">VM {vm.id}</p>
+          <p className="text-base font-semibold text-white font-mono">{vm.name ?? `vm-${vm.id}`}</p>
+          <p className="text-sm text-gray-400 mt-1">
+            Huidige locatie:{' '}
+            <span className="text-blue-300 font-mono">{vm.current_node ?? '—'}</span>
+            {vm.current_node === 'proxmox-ny'  && <span className="text-gray-500 ml-1">(New York DC)</span>}
+            {vm.current_node === 'proxmox-bxl' && <span className="text-gray-500 ml-1">(Brussels DC)</span>}
+          </p>
+        </div>
+        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${
+          running
+            ? 'bg-emerald-900/50 text-emerald-400 border-emerald-700/50'
+            : 'bg-gray-800 text-gray-400 border-gray-600'
+        }`}>
+          <span className={`h-1.5 w-1.5 rounded-full ${running ? 'bg-emerald-400 animate-pulse' : 'bg-gray-500'}`} />
+          {vm.status?.toUpperCase() ?? '—'}
         </span>
       </div>
 
-      {/* VM 100 badge */}
-      <div className={`rounded border p-2 transition-all duration-500 ${
-        isVmHere
-          ? 'border-blue-600/60 bg-blue-900/20 opacity-100'
-          : 'border-gray-700/20 opacity-0 pointer-events-none'
-      }`}>
-        <p className="text-xs text-blue-300 font-mono">📦 VM 100</p>
-        <p className="text-xs text-gray-600 mt-0.5">{info?.vm_status ?? 'running'}</p>
-      </div>
+      {/* Informatieve badge — nested KVM */}
+      {vm.status === 'stopped' && (
+        <div className="flex items-start gap-2 rounded-lg border border-blue-700/30 bg-blue-900/10 px-3 py-2">
+          <span className="text-blue-400 mt-0.5 shrink-0">ℹ️</span>
+          <p className="text-xs text-blue-300 leading-relaxed">
+            {vm.note ?? 'Gestopt — nested KVM niet beschikbaar op cloud nodes. Migratie werkt wel.'}
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* ─── Latency row ──────────────────────────────────────────────────────────── */
+function LatencyRow({ label, ms, status }) {
+  const color = ms == null ? 'text-gray-500'
+    : ms < 5   ? 'text-emerald-400'
+    : ms < 30  ? 'text-blue-400'
+    : ms < 100 ? 'text-yellow-400'
+    : 'text-red-400'
+  return (
+    <div className="flex items-center justify-between px-4 py-2.5 rounded-lg border border-[#2D3148] bg-[#1A1D27]">
+      <p className="text-xs text-gray-400 font-mono">{label}</p>
+      <p className={`text-sm font-bold font-mono ${color}`}>
+        {status === 'timeout' ? 'timeout' : ms != null ? `${ms} ms` : '—'}
+      </p>
     </div>
   )
 }
@@ -89,12 +136,13 @@ function MigLog({ lines }) {
   return (
     <div
       ref={ref}
-      className="rounded-lg border border-[#2D3148] bg-[#0F1117] p-3 max-h-40 overflow-y-auto font-mono text-xs flex flex-col gap-1"
+      className="rounded-lg border border-[#2D3148] bg-[#0F1117] p-3 max-h-44 overflow-y-auto font-mono text-xs flex flex-col gap-1"
     >
       {lines.map((l, i) => (
         <p key={i} className={
           l.type === 'success' ? 'text-emerald-400'
           : l.type === 'error' ? 'text-red-400'
+          : l.type === 'warn'  ? 'text-yellow-400'
           : 'text-gray-400'
         }>
           <span className="text-gray-600 mr-2">[{l.time}]</span>{l.msg}
@@ -104,56 +152,40 @@ function MigLog({ lines }) {
   )
 }
 
-/* ─── Latency card ─────────────────────────────────────────────────────────── */
-function LatencyCard({ node, ms }) {
-  const color = ms === undefined ? 'text-gray-500'
-    : ms < 5   ? 'text-emerald-400'
-    : ms < 30  ? 'text-blue-400'
-    : ms < 100 ? 'text-yellow-400'
-    : 'text-red-400'
-  return (
-    <div className="rounded-lg border border-[#2D3148] bg-[#1A1D27] p-3 flex flex-col gap-1">
-      <p className="text-xs text-gray-500">{node}</p>
-      <p className={`text-2xl font-bold ${color}`}>
-        {ms !== undefined ? `${ms} ms` : '—'}
-      </p>
-    </div>
-  )
-}
-
-/* ─── Main ─────────────────────────────────────────────────────────────────── */
+/* ═══════════════════════════════════════════════════════════════════════════ */
 export default function TabLiveDemo() {
   const [status,         setStatus]         = useState(null)
   const [apiOffline,     setApiOffline]     = useState(false)
   const [firstLoad,      setFirstLoad]      = useState(true)
-  const [migrating,      setMigrating]      = useState(null)   // 'bxl' | 'ny' | null
-  const [migLog,         setMigLog]         = useState([])
-  const [lastUpdate,     setLastUpdate]     = useState(null)
   const [latency,        setLatency]        = useState(null)
   const [latencyLoading, setLatencyLoading] = useState(false)
-  const [countdown,      setCountdown]      = useState(0)      // seconds remaining in cooldown
+  const [pingNodes,      setPingNodes]      = useState(null)
+  const [pingLoading,    setPingLoading]    = useState(false)
+  const [migrating,      setMigrating]      = useState(null)   // 'bxl' | 'ny' | null
+  const [migLog,         setMigLog]         = useState([])
+  const [migSlowWarn,    setMigSlowWarn]    = useState(false)
+  const [lastUpdate,     setLastUpdate]     = useState(null)
+  const [countdown,      setCountdown]      = useState(0)      // seconds remaining
 
-  const pollTimerRef     = useRef(null)
-  const countdownRef     = useRef(null)
+  const pollRef      = useRef(null)
+  const countdownRef = useRef(null)
+  const slowWarnRef  = useRef(null)
 
-  /* ── fetch /status ── */
+  /* ── fetch /status ─────────────────────────────────────────────────────── */
   const fetchStatus = useCallback(async () => {
     try {
-      const res = await fetch(`${BASE}/status`, { signal: AbortSignal.timeout(6000) })
+      const res = await fetch(`${BASE}/status`, { signal: AbortSignal.timeout(7000) })
       if (!res.ok) throw new Error('HTTP ' + res.status)
       const data = await res.json()
       setStatus(data)
       setApiOffline(false)
       setLastUpdate(new Date())
 
-      // Sync countdown with server's retry_after_seconds
-      const serverSeconds = data?.migration_cooldown?.retry_after_seconds ?? 0
-      setCountdown(prev => {
-        // Only update if server reports more time than local countdown
-        // (avoids jitter from network round-trip)
-        return serverSeconds > prev ? serverSeconds : prev
-      })
-
+      // Sync countdown from server
+      const srvSec = data?.migration_cooldown?.retry_after_seconds ?? 0
+      if (srvSec > 0) {
+        setCountdown(prev => srvSec > prev ? srvSec : prev)
+      }
       return data
     } catch {
       setApiOffline(true)
@@ -163,96 +195,9 @@ export default function TabLiveDemo() {
     }
   }, [])
 
-  /* ── Adaptive polling: every 3s during migration, every 30s otherwise ── */
-  const scheduleNextPoll = useCallback((inProgress) => {
-    clearInterval(pollTimerRef.current)
-    pollTimerRef.current = setInterval(async () => {
-      const data = await fetchStatus()
-      // If migration finished, switch back to 30s polling
-      if (!data?.migration_in_progress) {
-        scheduleNextPoll(false)
-      }
-    }, inProgress ? 3_000 : 30_000)
-  }, [fetchStatus])
-
-  useEffect(() => {
-    fetchStatus()
-    scheduleNextPoll(false)
-    return () => clearInterval(pollTimerRef.current)
-  }, [fetchStatus, scheduleNextPoll])
-
-  /* ── Switch to 3-second polling while migration_in_progress ── */
-  useEffect(() => {
-    const inProgress = status?.migration_in_progress ?? false
-    scheduleNextPoll(inProgress)
-  }, [status?.migration_in_progress, scheduleNextPoll])
-
-  /* ── Countdown timer (client-side, synced on each status fetch) ── */
-  useEffect(() => {
-    clearInterval(countdownRef.current)
-    if (countdown > 0) {
-      countdownRef.current = setInterval(() => {
-        setCountdown(prev => {
-          if (prev <= 1) {
-            clearInterval(countdownRef.current)
-            return 0
-          }
-          return prev - 1
-        })
-      }, 1_000)
-    }
-    return () => clearInterval(countdownRef.current)
-  }, [countdown])
-
-  /* ── log helper ── */
-  const log = (msg, type = 'info') =>
-    setMigLog(prev => [...prev, { msg, type, time: ts() }])
-
-  /* ── migrate ── */
-  async function migrate(direction) {
-    if (migrating || countdown > 0 || status?.migration_in_progress) return
-    const dest      = direction === 'bxl' ? 'proxmox-bxl' : 'proxmox-ny'
-    const destLabel = direction === 'bxl' ? 'Brussel (proxmox-bxl)' : 'New York (proxmox-ny)'
-    setMigrating(direction)
-    setMigLog([])
-    log(`Migratie naar ${destLabel} gestart…`)
-
-    try {
-      await new Promise(r => setTimeout(r, 500))
-      log('Verbinding met Proxmox API via Flask…')
-
-      const res = await fetch(`${BASE}/migrate/to-${direction}`, {
-        method: 'POST',
-        signal: AbortSignal.timeout(180_000),   // migratie kan even duren
-      })
-      const data = await res.json()
-
-      if (res.status === 429) {
-        const retry = data.retry_after_seconds
-        if (retry) setCountdown(retry)
-        throw new Error(data.message ?? 'Rate limit bereikt')
-      }
-
-      if (!res.ok || data.status === 'error') {
-        throw new Error(data.message ?? data.error ?? 'Onbekende fout')
-      }
-
-      log(`✅ ${data.message ?? `VM 100 succesvol gemigreerd naar ${dest}`}`, 'success')
-      const updated = await fetchStatus()
-      // Set countdown from fresh server data
-      const serverCd = updated?.migration_cooldown?.retry_after_seconds ?? 0
-      if (serverCd > 0) setCountdown(serverCd)
-    } catch (err) {
-      log(`❌ Fout: ${err.message}`, 'error')
-    } finally {
-      setMigrating(null)
-    }
-  }
-
-  /* ── fetch /latency ── */
-  async function fetchLatency() {
+  /* ── fetch /latency ────────────────────────────────────────────────────── */
+  const fetchLatency = useCallback(async () => {
     setLatencyLoading(true)
-    setLatency(null)
     try {
       const res = await fetch(`${BASE}/latency`, { signal: AbortSignal.timeout(15_000) })
       if (!res.ok) throw new Error('HTTP ' + res.status)
@@ -262,67 +207,188 @@ export default function TabLiveDemo() {
     } finally {
       setLatencyLoading(false)
     }
+  }, [])
+
+  /* ── fetch /ping-nodes ─────────────────────────────────────────────────── */
+  const fetchPingNodes = useCallback(async () => {
+    setPingLoading(true)
+    try {
+      const res = await fetch(`${BASE}/ping-nodes`, { signal: AbortSignal.timeout(15_000) })
+      if (!res.ok) throw new Error('HTTP ' + res.status)
+      setPingNodes(await res.json())
+    } catch (e) {
+      setPingNodes({ error: e.message })
+    } finally {
+      setPingLoading(false)
+    }
+  }, [])
+
+  /* ── initial load ──────────────────────────────────────────────────────── */
+  useEffect(() => {
+    fetchStatus()
+    fetchLatency()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  /* ── adaptive polling ──────────────────────────────────────────────────── */
+  const startPolling = useCallback((fast) => {
+    clearInterval(pollRef.current)
+    pollRef.current = setInterval(fetchStatus, fast ? 3_000 : 30_000)
+  }, [fetchStatus])
+
+  useEffect(() => {
+    startPolling(false)
+    return () => clearInterval(pollRef.current)
+  }, [startPolling])
+
+  useEffect(() => {
+    const inProgress = status?.migration_in_progress ?? false
+    startPolling(inProgress)
+  }, [status?.migration_in_progress, startPolling])
+
+  /* ── countdown tick ────────────────────────────────────────────────────── */
+  useEffect(() => {
+    clearInterval(countdownRef.current)
+    if (countdown > 0) {
+      countdownRef.current = setInterval(() => {
+        setCountdown(p => {
+          if (p <= 1) { clearInterval(countdownRef.current); return 0 }
+          return p - 1
+        })
+      }, 1_000)
+    }
+    return () => clearInterval(countdownRef.current)
+  }, [countdown])
+
+  /* ── log helper ────────────────────────────────────────────────────────── */
+  const log = (msg, type = 'info') =>
+    setMigLog(prev => [...prev, { msg, type, time: ts() }])
+
+  /* ── refresh all ───────────────────────────────────────────────────────── */
+  function refreshAll() {
+    fetchStatus()
+    fetchLatency()
+    if (pingNodes) fetchPingNodes()
   }
 
-  /* ── Loading skeleton ── */
+  /* ── migrate ───────────────────────────────────────────────────────────── */
+  async function migrate(direction) {
+    if (migrating || countdown > 0 || status?.migration_in_progress) return
+    const dest      = direction === 'bxl' ? 'proxmox-bxl' : 'proxmox-ny'
+    const destLabel = direction === 'bxl' ? 'Brussels DC (proxmox-bxl)' : 'New York DC (proxmox-ny)'
+    const srcLabel  = direction === 'bxl' ? 'proxmox-ny' : 'proxmox-bxl'
+
+    setMigrating(direction)
+    setMigLog([])
+    setMigSlowWarn(false)
+    startPolling(true)
+
+    log(`Migratie gestart naar ${destLabel}`)
+    log(`VM 100 wordt verplaatst van ${srcLabel} naar ${dest}`)
+    log('Verwachte duur: ~47 seconden')
+
+    // Slow warning after 120s
+    slowWarnRef.current = setTimeout(() => {
+      setMigSlowWarn(true)
+    }, 120_000)
+
+    try {
+      const res = await fetch(`${BASE}/migrate/to-${direction}`, {
+        method: 'POST',
+        signal: AbortSignal.timeout(180_000),
+      })
+      const data = await res.json()
+
+      if (res.status === 429) {
+        const retry = data.retry_after_seconds
+        if (retry) setCountdown(retry)
+        throw new Error(data.message ?? 'Rate limit bereikt')
+      }
+      if (!res.ok || data.status === 'error') {
+        throw new Error(data.message ?? data.error ?? 'Onbekende fout')
+      }
+
+      log(`✅ Migratie geslaagd! VM 100 staat nu op ${dest}`, 'success')
+
+      // Sync cooldown
+      const updated = await fetchStatus()
+      const srvCd = updated?.migration_cooldown?.retry_after_seconds ?? COOLDOWN_SECONDS
+      setCountdown(srvCd)
+
+    } catch (err) {
+      log(`❌ Fout: ${err.message}`, 'error')
+    } finally {
+      clearTimeout(slowWarnRef.current)
+      setMigSlowWarn(false)
+      setMigrating(null)
+      startPolling(false)
+    }
+  }
+
+  /* ── Loading ────────────────────────────────────────────────────────────── */
   if (firstLoad) {
     return (
-      <div className="flex items-center justify-center py-20 gap-3">
+      <div className="flex items-center justify-center py-24 gap-3">
         <div className="h-5 w-5 rounded-full border-2 border-blue-500 border-t-transparent animate-spin" />
         <p className="text-gray-500 text-sm">Verbinden met API…</p>
       </div>
     )
   }
 
-  /* ── Derived state ── */
-  const nyInfo         = status?.nodes?.['proxmox-ny']
-  const bxlInfo        = status?.nodes?.['proxmox-bxl']
-  const vmNode         = status?.vm?.current_node   // 'proxmox-ny' | 'proxmox-bxl'
-  const vmStatus       = status?.vm?.status         // 'running' | 'stopped'
+  /* ── Derived ─────────────────────────────────────────────────────────────── */
+  const nyInfo  = status?.nodes?.['proxmox-ny']
+  const bxlInfo = status?.nodes?.['proxmox-bxl']
+  const vm      = status?.vm
+  const vmNode  = vm?.current_node
   const serverInProgress = status?.migration_in_progress ?? false
-
-  const blocked = migrating || countdown > 0 || serverInProgress || apiOffline
-
-  const canMigrateToBxl = !blocked && vmNode === 'proxmox-ny'  && vmStatus === 'running'
-  const canMigrateToNy  = !blocked && vmNode === 'proxmox-bxl' && vmStatus === 'running'
+  const blocked = !!(migrating || countdown > 0 || serverInProgress || apiOffline)
 
   return (
     <div className="flex flex-col gap-8">
 
-      {/* Offline banner */}
+      {/* ── Offline banner ────────────────────────────────────────────────── */}
       {apiOffline && <OfflineBanner onRetry={fetchStatus} />}
 
-      {/* ── Cluster status ── */}
-      <section className="flex flex-col gap-4">
-        <div className="flex items-center justify-between flex-wrap gap-2">
-          <h3 className="text-sm font-semibold uppercase tracking-widest text-gray-500">Cluster Status</h3>
-          <div className="flex items-center gap-3">
-            {lastUpdate && (
-              <span className="text-xs text-gray-600">
-                {lastUpdate.toLocaleTimeString('nl-BE')}
-              </span>
-            )}
-            <button
-              onClick={fetchStatus}
-              disabled={firstLoad}
-              className="text-xs text-blue-400 hover:text-blue-300 transition-colors disabled:opacity-40"
-            >
-              🔄 Refresh
-            </button>
-          </div>
+      {/* ── Header: laatste update + refresh ─────────────────────────────── */}
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="flex items-center gap-2">
+          <span className={`h-2 w-2 rounded-full ${apiOffline ? 'bg-red-500' : 'bg-emerald-500 animate-pulse'}`} />
+          <p className="text-xs text-gray-500">
+            {apiOffline ? 'API offline' : 'Live verbinding'}
+          </p>
         </div>
+        <div className="flex items-center gap-3">
+          {lastUpdate && (
+            <span className="text-xs text-gray-600">
+              Laatste update: {lastUpdate.toLocaleTimeString('nl-BE')}
+            </span>
+          )}
+          <button
+            onClick={refreshAll}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-[#2D3148] text-xs text-gray-400 hover:text-white hover:border-gray-500 transition-colors"
+          >
+            🔄 Refresh
+          </button>
+        </div>
+      </div>
 
-        {/* Node cards + tunnel */}
-        <div className="flex flex-col sm:flex-row items-stretch gap-4">
-          <NodeCard name="proxmox-ny"  info={nyInfo}  isVmHere={vmNode === 'proxmox-ny'}  />
+      {/* ────────────────────────────────────────────────────────────────── */}
+      {/* SECTIE 1: NODE STATUS                                             */}
+      {/* ────────────────────────────────────────────────────────────────── */}
+      <section className="flex flex-col gap-3">
+        <h3 className="text-xs font-semibold uppercase tracking-widest text-gray-500">
+          Node Status
+        </h3>
+        <div className="flex flex-col sm:flex-row gap-3">
+          <NodeCard name="proxmox-ny"  info={nyInfo}  />
 
-          {/* Tunnel indicator */}
-          <div className="flex flex-col items-center justify-center gap-2 shrink-0 sm:w-28 py-2">
-            <p className="text-xs text-blue-400 font-semibold whitespace-nowrap">GCP VPC</p>
-            <div className="relative w-full h-1.5 bg-blue-900/20 rounded-full overflow-hidden">
+          {/* VPC tunnel indicator */}
+          <div className="flex flex-col items-center justify-center gap-1.5 shrink-0 sm:w-24 py-2">
+            <p className="text-xs text-blue-400 font-semibold">GCP VPC</p>
+            <div className="relative w-full h-1 bg-blue-900/20 rounded-full overflow-hidden">
               <div
                 className="absolute top-0 h-full rounded-full bg-gradient-to-r from-transparent via-blue-500 to-transparent"
-                style={{ width: '45%', animation: !apiOffline ? 'tunnel-flow 2s linear infinite' : 'none', opacity: apiOffline ? 0.15 : 1 }}
+                style={{ width: '45%', animation: !apiOffline ? 'tunnel-flow 2s linear infinite' : 'none', opacity: apiOffline ? 0.1 : 1 }}
               />
             </div>
             <p className={`text-xs font-medium ${!apiOffline ? 'text-emerald-400' : 'text-red-400'}`}>
@@ -330,67 +396,162 @@ export default function TabLiveDemo() {
             </p>
           </div>
 
-          <NodeCard name="proxmox-bxl" info={bxlInfo} isVmHere={vmNode === 'proxmox-bxl'} />
+          <NodeCard name="proxmox-bxl" info={bxlInfo} />
         </div>
-
-        {/* VM status strip */}
-        {status?.vm && (
-          <div className="rounded-lg border border-[#2D3148] bg-[#1A1D27] px-4 py-3 flex flex-wrap gap-4 text-xs text-gray-400">
-            <span>
-              <span className="text-gray-600">Cluster: </span>
-              <span className="text-white">poc-cluster</span>
-            </span>
-            <span>
-              <span className="text-gray-600">VM 100 locatie: </span>
-              <span className="text-blue-300 font-mono">{vmNode ?? '—'}</span>
-            </span>
-            <span>
-              <span className="text-gray-600">VM status: </span>
-              <span className={vmStatus === 'running' ? 'text-emerald-400' : 'text-yellow-400'}>
-                {vmStatus ?? '—'}
-              </span>
-            </span>
-          </div>
-        )}
       </section>
 
-      {/* ── Migratie controls ── */}
-      <section className="flex flex-col gap-4">
-        <h3 className="text-sm font-semibold uppercase tracking-widest text-gray-500">VM Migratie</h3>
+      {/* ────────────────────────────────────────────────────────────────── */}
+      {/* SECTIE 2: VM 100 STATUS                                           */}
+      {/* ────────────────────────────────────────────────────────────────── */}
+      <section className="flex flex-col gap-3">
+        <h3 className="text-xs font-semibold uppercase tracking-widest text-gray-500">
+          VM 100 Status
+        </h3>
+        {vm
+          ? <VmCard vm={vm} />
+          : <p className="text-xs text-gray-600">Status niet beschikbaar — API offline?</p>
+        }
+      </section>
+
+      {/* ────────────────────────────────────────────────────────────────── */}
+      {/* SECTIE 3 + 4: LATENCY & PING-NODES                               */}
+      {/* ────────────────────────────────────────────────────────────────── */}
+      <section className="flex flex-col gap-3">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <h3 className="text-xs font-semibold uppercase tracking-widest text-gray-500">
+            Latentie &amp; Ping
+          </h3>
+          <div className="flex gap-2">
+            <button
+              onClick={fetchLatency}
+              disabled={latencyLoading || apiOffline}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded border border-[#2D3148] text-xs text-gray-400 hover:text-white hover:border-gray-500 disabled:opacity-40 transition-colors"
+            >
+              {latencyLoading
+                ? <><div className="h-3 w-3 rounded-full border border-blue-400 border-t-transparent animate-spin" /> laden…</>
+                : '⚡ Meet latentie'
+              }
+            </button>
+            <button
+              onClick={fetchPingNodes}
+              disabled={pingLoading || apiOffline}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded border border-[#2D3148] text-xs text-gray-400 hover:text-white hover:border-gray-500 disabled:opacity-40 transition-colors"
+            >
+              {pingLoading
+                ? <><div className="h-3 w-3 rounded-full border border-blue-400 border-t-transparent animate-spin" /> pingen…</>
+                : '📡 Ping uitvoeren'
+              }
+            </button>
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-2">
+          {/* Latency: flask-api → nodes */}
+          {latency?.error ? (
+            <p className="text-xs text-red-400 px-1">{latency.error}</p>
+          ) : (
+            <>
+              <LatencyRow
+                label="flask-api ↔ proxmox-ny"
+                ms={latency?.['proxmox-ny']?.latency_ms}
+              />
+              <LatencyRow
+                label="flask-api ↔ proxmox-bxl"
+                ms={latency?.['proxmox-bxl']?.latency_ms}
+              />
+            </>
+          )}
+
+          {/* Ping: NY ↔ BXL */}
+          {pingNodes && !pingNodes.error && (
+            <>
+              <LatencyRow
+                label="NY → flask-api"
+                ms={pingNodes?.ny_to_flask?.latency_ms}
+                status={pingNodes?.ny_to_flask?.status}
+              />
+              <LatencyRow
+                label="BXL → flask-api"
+                ms={pingNodes?.bxl_to_flask?.latency_ms}
+                status={pingNodes?.bxl_to_flask?.status}
+              />
+            </>
+          )}
+          {pingNodes?.error && (
+            <p className="text-xs text-red-400 px-1">{pingNodes.error}</p>
+          )}
+          {!pingNodes && !pingLoading && (
+            <p className="text-xs text-gray-600 text-center py-1">
+              Klik "Ping uitvoeren" voor live NY ↔ BXL ping resultaten.
+            </p>
+          )}
+        </div>
+      </section>
+
+      {/* ────────────────────────────────────────────────────────────────── */}
+      {/* SECTIE 5 + 6 + 7: MIGRATIE                                       */}
+      {/* ────────────────────────────────────────────────────────────────── */}
+      <section className="flex flex-col gap-3">
+        <h3 className="text-xs font-semibold uppercase tracking-widest text-gray-500">
+          VM Migratie
+        </h3>
+
         <div className="rounded-xl border border-[#2D3148] bg-[#12151F] p-5 flex flex-col gap-4">
 
           {/* Migration in progress banner */}
           {(migrating || serverInProgress) && (
-            <div className="flex items-center gap-3 rounded-lg border border-blue-700/40 bg-blue-900/20 px-4 py-3">
-              <div className="h-4 w-4 rounded-full border-2 border-blue-400 border-t-transparent animate-spin shrink-0" />
-              <p className="text-sm text-blue-300">Migratie bezig… even geduld</p>
+            <div className="flex flex-col gap-2 rounded-lg border border-blue-700/40 bg-blue-900/15 px-4 py-3">
+              <div className="flex items-center gap-2">
+                <div className="h-4 w-4 rounded-full border-2 border-blue-400 border-t-transparent animate-spin shrink-0" />
+                <p className="text-sm font-medium text-blue-300">Migratie gestart…</p>
+              </div>
+              <p className="text-xs text-blue-400/80 ml-6">
+                VM 100 wordt verplaatst van{' '}
+                <span className="font-mono">{migrating === 'bxl' ? 'proxmox-ny' : 'proxmox-bxl'}</span>
+                {' '}naar{' '}
+                <span className="font-mono">{migrating === 'bxl' ? 'proxmox-bxl' : 'proxmox-ny'}</span>
+              </p>
+              <p className="text-xs text-gray-500 ml-6">Verwachte duur: ~47 seconden</p>
+            </div>
+          )}
+
+          {/* Slow warning */}
+          {migSlowWarn && (
+            <div className="flex items-center gap-2 rounded-lg border border-yellow-700/40 bg-yellow-900/15 px-4 py-2">
+              <span className="text-yellow-400 shrink-0">⏳</span>
+              <p className="text-xs text-yellow-300">Duurt langer dan verwacht… nog aan het pollen.</p>
             </div>
           )}
 
           {/* Cooldown banner */}
           {!migrating && !serverInProgress && countdown > 0 && (
-            <div className="flex items-center justify-between rounded-lg border border-orange-700/40 bg-orange-900/20 px-4 py-3">
-              <p className="text-sm text-orange-300">
-                Volgende migratie mogelijk over{' '}
-                <span className="font-bold font-mono text-orange-200">{countdown}s</span>
-              </p>
-              <div className="h-1.5 w-24 bg-orange-900/40 rounded-full overflow-hidden">
+            <div className="flex items-center justify-between rounded-lg border border-orange-700/40 bg-orange-900/15 px-4 py-3 gap-4">
+              <div>
+                <p className="text-sm text-orange-300 font-medium">
+                  Volgende migratie mogelijk over{' '}
+                  <span className="font-bold font-mono text-orange-200">{fmtCountdown(countdown)}</span>
+                </p>
+                <p className="text-xs text-gray-500 mt-0.5">Cooldown — 1 uur tussen migraties</p>
+              </div>
+              {/* Progress bar */}
+              <div className="hidden sm:block h-1.5 w-32 bg-orange-900/40 rounded-full overflow-hidden shrink-0">
                 <div
                   className="h-full bg-orange-500 rounded-full transition-all duration-1000"
-                  style={{ width: `${(countdown / 60) * 100}%` }}
+                  style={{ width: `${(countdown / COOLDOWN_SECONDS) * 100}%` }}
                 />
               </div>
             </div>
           )}
 
+          {/* Knoppen */}
           <div className="flex flex-col sm:flex-row gap-3">
-            {/* NY → BXL */}
+            {/* → Brussel */}
             <button
               onClick={() => migrate('bxl')}
-              disabled={!canMigrateToBxl}
+              disabled={blocked || vmNode !== 'proxmox-ny'}
               title={
-                countdown > 0 ? `Cooldown: nog ${countdown}s`
-                : serverInProgress ? 'Migratie bezig'
+                countdown > 0        ? `Cooldown: nog ${fmtCountdown(countdown)}`
+                : serverInProgress   ? 'Migratie bezig'
                 : vmNode !== 'proxmox-ny' ? 'VM staat niet op proxmox-ny'
                 : undefined
               }
@@ -402,13 +563,13 @@ export default function TabLiveDemo() {
               }
             </button>
 
-            {/* BXL → NY */}
+            {/* → New York */}
             <button
               onClick={() => migrate('ny')}
-              disabled={!canMigrateToNy}
+              disabled={blocked || vmNode !== 'proxmox-bxl'}
               title={
-                countdown > 0 ? `Cooldown: nog ${countdown}s`
-                : serverInProgress ? 'Migratie bezig'
+                countdown > 0         ? `Cooldown: nog ${fmtCountdown(countdown)}`
+                : serverInProgress    ? 'Migratie bezig'
                 : vmNode !== 'proxmox-bxl' ? 'VM staat niet op proxmox-bxl'
                 : undefined
               }
@@ -421,52 +582,18 @@ export default function TabLiveDemo() {
             </button>
           </div>
 
-          {/* Why disabled */}
-          {!apiOffline && !migrating && !serverInProgress && countdown === 0 && vmStatus !== 'running' && (
-            <p className="text-xs text-yellow-500 text-center">
-              VM 100 moet in status <strong>running</strong> zijn voor live migratie.
-            </p>
-          )}
-          {apiOffline && (
-            <p className="text-xs text-yellow-500 text-center">
-              Start de Flask API om live migratie te triggeren.
+          {/* Hulptekst */}
+          {!apiOffline && !migrating && !serverInProgress && countdown === 0 && vmNode && (
+            <p className="text-xs text-gray-600 text-center">
+              VM staat op{' '}
+              <span className="font-mono text-blue-400">{vmNode}</span>.{' '}
+              {vmNode === 'proxmox-ny'  && 'Klik "Migreer naar Brussel" om VM 100 te verplaatsen.'}
+              {vmNode === 'proxmox-bxl' && 'Klik "Migreer naar New York" om VM 100 te verplaatsen.'}
             </p>
           )}
 
           <MigLog lines={migLog} />
         </div>
-      </section>
-
-      {/* ── Latentie ── */}
-      <section className="flex flex-col gap-4">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold uppercase tracking-widest text-gray-500">Latentie (flask-api → nodes)</h3>
-          <button
-            onClick={fetchLatency}
-            disabled={latencyLoading || apiOffline}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-[#2D3148] text-xs text-gray-400 hover:text-white hover:border-gray-500 disabled:opacity-40 transition-colors"
-          >
-            {latencyLoading
-              ? <><div className="h-3 w-3 rounded-full border border-blue-400 border-t-transparent animate-spin" /> Meten…</>
-              : '⚡ Meet latentie'
-            }
-          </button>
-        </div>
-
-        {latency?.error ? (
-          <p className="text-xs text-red-400">{latency.error}</p>
-        ) : (
-          <div className="grid grid-cols-2 gap-3">
-            <LatencyCard node="proxmox-ny (europe-west1-b)"  ms={latency?.['proxmox-ny']?.latency_ms}  />
-            <LatencyCard node="proxmox-bxl (europe-west4-a)" ms={latency?.['proxmox-bxl']?.latency_ms} />
-          </div>
-        )}
-
-        {!latency && !latencyLoading && (
-          <p className="text-xs text-gray-600 text-center">
-            Klik "Meet latentie" om de round-trip tijd van de Flask API naar beide Proxmox-nodes te meten.
-          </p>
-        )}
       </section>
 
       {/* Keyframes */}
@@ -476,7 +603,6 @@ export default function TabLiveDemo() {
           100% { left: 145%; }
         }
       `}</style>
-
     </div>
   )
 }

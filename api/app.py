@@ -1,15 +1,17 @@
 """
-Proxmox Multi-Site PoC — Flask API
+Proxmox Multi-Site PoC — Flask API  v3.0
 Public : https://api.fridrdev.uk  (Cloudflare Zero Trust Tunnel)
 Intern : http://10.132.0.4:5000   (flask-api VM, GCP europe-west1-b)
 """
 
+import subprocess
+import threading
+import time
+from datetime import datetime, timezone
+
 from flask import Flask, jsonify
 from flask_cors import CORS
 from proxmoxer import ProxmoxAPI
-import subprocess
-import platform
-import time
 
 app = Flask(__name__)
 
@@ -23,29 +25,29 @@ CORS(app, origins=[
 # ─── Proxmox node config ───────────────────────────────────────────────────────
 NODES = {
     "proxmox-ny": {
-        "host":     "10.132.0.3",   # GCP europe-west1-b
+        "host":     "10.132.0.3",
         "user":     "root@pam",
         "password": "admin",
     },
     "proxmox-bxl": {
-        "host":     "10.164.0.2",   # GCP europe-west4-a
+        "host":     "10.164.0.2",
         "user":     "root@pam",
         "password": "admin",
     },
 }
 
-VM_ID = 100
+VM_ID              = 100
+MIGRATION_COOLDOWN = 3600   # 1 uur
 
-# ─── Rate limiting state ───────────────────────────────────────────────────────
-MIGRATION_COOLDOWN = 60          # seconds between migrations
-last_migration_time = 0          # epoch of last completed migration
-migration_in_progress = False    # True while a migration is running
+# ─── Global state ─────────────────────────────────────────────────────────────
+last_migration_time   = 0
+migration_in_progress = False
+migration_lock        = threading.Lock()
 
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
-def get_proxmox(node_name: str) -> ProxmoxAPI:
-    cfg = NODES[node_name]
+def get_proxmox(cfg: dict) -> ProxmoxAPI:
     return ProxmoxAPI(
         cfg["host"],
         user=cfg["user"],
@@ -55,53 +57,57 @@ def get_proxmox(node_name: str) -> ProxmoxAPI:
     )
 
 
-def ping_ms(host: str) -> int | None:
-    """Return average round-trip time in ms, or None on failure."""
-    flag = "-n" if platform.system().lower() == "windows" else "-c"
+def node_online(cfg: dict) -> bool:
+    try:
+        px = get_proxmox(cfg)
+        px.nodes.get()
+        return True
+    except Exception:
+        return False
+
+
+def get_vm_location() -> tuple[str, str]:
+    """
+    Returns (node_name, vm_status) where node_name is
+    'proxmox-ny' | 'proxmox-bxl' | 'unknown'
+    and vm_status is 'stopped' | 'running' | 'unknown'.
+    """
+    for node_name, cfg in NODES.items():
+        try:
+            px  = get_proxmox(cfg)
+            vm  = px.nodes(node_name).qemu(VM_ID).status.current.get()
+            return node_name, vm.get("status", "unknown")
+        except Exception:
+            continue
+    return "unknown", "unknown"
+
+
+def ping_ms(host: str) -> float | None:
+    """
+    Ping host 2 times, return avg rtt in ms or None on failure.
+    Works on Linux (GCP VM).
+    """
     try:
         result = subprocess.run(
-            ["ping", flag, "3", "-W", "2", host],
+            ["ping", "-c", "2", "-W", "3", host],
             capture_output=True, text=True, timeout=10,
         )
         for line in result.stdout.splitlines():
-            line_l = line.lower()
-            # Linux: "rtt min/avg/max/mdev = 1.2/2.3/3.4/..."
-            if "avg" in line_l and "/" in line and "=" in line:
+            # Linux: rtt min/avg/max/mdev = 0.123/0.456/0.789/0.100 ms
+            if "rtt" in line and "/" in line:
                 parts = line.split("=")[-1].strip().split("/")
-                return round(float(parts[1]))
+                return round(float(parts[1]), 2)
     except Exception:
         pass
     return None
 
 
-def node_status(node_name: str) -> dict:
-    cfg = NODES[node_name]
-    try:
-        pve = get_proxmox(node_name)
-        pve.nodes.get()   # lightweight reachability check
-        return {"status": "online", "ip": cfg["host"]}
-    except Exception:
-        return {"status": "offline", "ip": cfg["host"]}
-
-
-def find_vm() -> tuple[str | None, str | None]:
-    """Find which node has VM_ID. Returns (node_name, vm_status)."""
-    for node_name in NODES:
-        try:
-            pve = get_proxmox(node_name)
-            vm  = pve.nodes(node_name).qemu(VM_ID).status.current.get()
-            return node_name, vm.get("status", "unknown")
-        except Exception:
-            continue
-    return None, None
-
-
 def cooldown_info() -> dict:
-    elapsed = time.time() - last_migration_time
-    remaining = max(0, MIGRATION_COOLDOWN - int(elapsed))
+    elapsed   = time.time() - last_migration_time
+    remaining = max(0, int(MIGRATION_COOLDOWN - elapsed))
     return {
-        "active": remaining > 0,
-        "retry_after_seconds": remaining,
+        "active":               remaining > 0,
+        "retry_after_seconds":  remaining,
     }
 
 
@@ -115,27 +121,39 @@ def ping():
 @app.route("/", methods=["GET"])
 def index():
     return jsonify({
-        "name":      "Proxmox Multi-Site PoC API",
-        "version":   "2.0.0",
-        "endpoints": ["/ping", "/status", "/latency", "/migrate/to-bxl", "/migrate/to-ny"],
+        "name":    "Proxmox Multi-Site PoC API",
+        "version": "3.0.0",
+        "endpoints": [
+            "GET  /ping",
+            "GET  /status",
+            "GET  /latency",
+            "GET  /ping-nodes",
+            "POST /migrate/to-bxl",
+            "POST /migrate/to-ny",
+        ],
     })
 
 
 @app.route("/status", methods=["GET"])
 def status():
-    ny_info  = node_status("proxmox-ny")
-    bxl_info = node_status("proxmox-bxl")
-    vm_node, vm_st = find_vm()
+    ny_cfg  = NODES["proxmox-ny"]
+    bxl_cfg = NODES["proxmox-bxl"]
+    ny_ok   = node_online(ny_cfg)
+    bxl_ok  = node_online(bxl_cfg)
+    vm_node, vm_status = get_vm_location()
 
     return jsonify({
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "nodes": {
-            "proxmox-ny":  ny_info,
-            "proxmox-bxl": bxl_info,
+            "proxmox-ny":  {"status": "online" if ny_ok  else "offline", "ip": ny_cfg["host"]},
+            "proxmox-bxl": {"status": "online" if bxl_ok else "offline", "ip": bxl_cfg["host"]},
         },
         "vm": {
             "id":           VM_ID,
+            "name":         "test-vm-ny",
             "current_node": vm_node,
-            "status":       vm_st or "unknown",
+            "status":       vm_status,
+            "note":         "VM gestopt - nested KVM niet beschikbaar op cloud nodes. Migratie werkt wel.",
         },
         "migration_in_progress": migration_in_progress,
         "migration_cooldown":    cooldown_info(),
@@ -147,11 +165,30 @@ def latency():
     result = {}
     for node_name, cfg in NODES.items():
         ms = ping_ms(cfg["host"])
-        if ms is not None:
-            result[node_name] = {"latency_ms": ms}
-        else:
-            result[node_name] = {"latency_ms": None, "error": "unreachable"}
+        result[node_name] = (
+            {"latency_ms": ms}
+            if ms is not None
+            else {"latency_ms": None, "error": "unreachable"}
+        )
     return jsonify(result)
+
+
+@app.route("/ping-nodes", methods=["GET"])
+def ping_nodes_endpoint():
+    """Ping van flask-api naar beide nodes, gerapporteerd per richting."""
+    ny_ms  = ping_ms(NODES["proxmox-ny"]["host"])
+    bxl_ms = ping_ms(NODES["proxmox-bxl"]["host"])
+
+    return jsonify({
+        "ny_to_flask": {
+            "latency_ms": ny_ms,
+            "status":     "ok" if ny_ms is not None else "timeout",
+        },
+        "bxl_to_flask": {
+            "latency_ms": bxl_ms,
+            "status":     "ok" if bxl_ms is not None else "timeout",
+        },
+    })
 
 
 @app.route("/migrate/to-bxl", methods=["POST"])
@@ -165,10 +202,9 @@ def migrate_to_ny():
 
 
 def _migrate(from_node: str, to_node: str):
-    """Offline migration: stop → migrate → start."""
     global last_migration_time, migration_in_progress
 
-    # ── Rate limiting checks ──────────────────────────────────────────────────
+    # ── Guard: already running ────────────────────────────────────────────
     if migration_in_progress:
         return jsonify({
             "status":  "error",
@@ -176,71 +212,64 @@ def _migrate(from_node: str, to_node: str):
             "message": "Er is al een migratie bezig, wacht tot deze klaar is.",
         }), 429
 
+    # ── Guard: cooldown ───────────────────────────────────────────────────
     cd = cooldown_info()
     if cd["active"]:
         return jsonify({
             "status":              "error",
             "code":                "rate_limited",
-            "message":             f"Wacht nog {cd['retry_after_seconds']} seconden voor de volgende migratie.",
+            "message":             f"Wacht nog {cd['retry_after_seconds']}s voor de volgende migratie.",
             "retry_after_seconds": cd["retry_after_seconds"],
         }), 429
 
-    try:
-        current, vm_st = find_vm()
+    # ── Find VM ───────────────────────────────────────────────────────────
+    current, vm_st = get_vm_location()
 
-        if current is None:
-            return jsonify({
-                "status":  "error",
-                "message": f"VM {VM_ID} niet gevonden op een van de nodes",
-            }), 500
+    if current == "unknown":
+        return jsonify({
+            "status":  "error",
+            "message": f"VM {VM_ID} niet gevonden op een van de nodes.",
+        }), 500
 
-        if current == to_node:
-            return jsonify({
-                "status":  "error",
-                "code":    "already_there",
-                "message": f"VM {VM_ID} staat al op {to_node}",
-            }), 400
+    if current == to_node:
+        return jsonify({
+            "status":  "error",
+            "code":    "already_there",
+            "message": f"VM {VM_ID} staat al op {to_node}.",
+        }), 400
 
-        if current != from_node:
-            return jsonify({
-                "status":  "error",
-                "message": f"VM {VM_ID} staat op {current}, niet op {from_node}",
-            }), 400
+    if current != from_node:
+        return jsonify({
+            "status":  "error",
+            "message": f"VM {VM_ID} staat op {current}, verwacht {from_node}.",
+        }), 400
 
+    # ── Execute migration ──────────────────────────────────────────────────
+    with migration_lock:
         migration_in_progress = True
-        pve = get_proxmox(from_node)
 
-        # 1. Stop VM if running (required for offline migration — no shared storage)
-        if vm_st == "running":
-            pve.nodes(from_node).qemu(VM_ID).status.stop.post()
-            for _ in range(60):
-                time.sleep(1)
-                st = pve.nodes(from_node).qemu(VM_ID).status.current.get()
-                if st.get("status") == "stopped":
-                    break
+    try:
+        px = get_proxmox(NODES[from_node])
 
-        # 2. Migrate
-        pve.nodes(from_node).qemu(VM_ID).migrate.post(
+        # Offline migration — geen shared storage op GCP
+        px.nodes(from_node).qemu(VM_ID).migrate.post(
             target=to_node,
-            online=0,       # offline migration (geen shared storage)
+            online=0,
         )
 
-        # 3. Wait for VM to appear on destination node (max 120s)
-        for _ in range(120):
+        # Poll tot VM op bestemmingsnode verschijnt (max 180s)
+        for _ in range(180):
             time.sleep(1)
-            new_node, _ = find_vm()
+            new_node, _ = get_vm_location()
             if new_node == to_node:
                 break
         else:
-            migration_in_progress = False
-            return jsonify({"status": "error", "message": "Migratie time-out"}), 500
-
-        # 4. Start VM on destination
-        pve_dest = get_proxmox(to_node)
-        pve_dest.nodes(to_node).qemu(VM_ID).status.start.post()
+            return jsonify({
+                "status":  "error",
+                "message": "Migratie time-out: VM niet aangekomen op bestemmingsnode.",
+            }), 500
 
         last_migration_time = time.time()
-        migration_in_progress = False
 
         return jsonify({
             "status":  "success",
@@ -248,8 +277,11 @@ def _migrate(from_node: str, to_node: str):
         })
 
     except Exception as e:
-        migration_in_progress = False
         return jsonify({"status": "error", "message": str(e)}), 500
+
+    finally:
+        with migration_lock:
+            migration_in_progress = False
 
 
 if __name__ == "__main__":
