@@ -126,8 +126,8 @@ export default function TabAPI() {
   "cluster": "poc-cluster",
   "tunnel": "active",
   "nodes": {
-    "pve-ny-01":  { "status": "online", "vms": 0 },
-    "pve-bxl-01": { "status": "online", "vms": 1 }
+    "proxmox-ny":  { "status": "online", "vms": 0 },
+    "proxmox-bxl": { "status": "online", "vms": 1 }
   }
 }`}
           />
@@ -137,8 +137,8 @@ export default function TabAPI() {
             response={`{
   "status": "migration_started",
   "vm": 100,
-  "from": "pve-ny-01",
-  "to": "pve-bxl-01",
+  "from": "proxmox-ny",
+  "to": "proxmox-bxl",
   "type": "live (online)"
 }`}
           />
@@ -148,8 +148,8 @@ export default function TabAPI() {
             response={`{
   "status": "migration_started",
   "vm": 100,
-  "from": "pve-bxl-01",
-  "to": "pve-ny-01",
+  "from": "proxmox-bxl",
+  "to": "proxmox-ny",
   "type": "live (online)"
 }`}
           />
@@ -182,7 +182,7 @@ export default function TabAPI() {
         <CodeBlock lang="JavaScript (fetch)" code={`// Status ophalen
 const res = await fetch('/api/status');
 const data = await res.json();
-console.log(data.nodes['pve-ny-01'].status); // "online"
+console.log(data.nodes['proxmox-ny'].status); // "online"
 
 // VM migreren naar Brussel
 const migration = await fetch('/api/migrate/to-bxl');

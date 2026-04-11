@@ -1,31 +1,6 @@
-# ── Proxmox PoC API endpoints → api.fridrdev.uk (Cloudflare Tunnel) ──────────
-[[redirects]]
-  from = "/api/status"
-  to = "https://api.fridrdev.uk/status"
-  status = 200
-  force = true
-
-[[redirects]]
-  from = "/api/migrate/*"
-  to = "https://api.fridrdev.uk/migrate/:splat"
-  status = 200
-  force = true
-
-[[redirects]]
-  from = "/api/ping"
-  to = "https://api.fridrdev.uk/ping"
-  status = 200
-  force = true
-
-[[redirects]]
-  from = "/api/latency"
-  to = "https://api.fridrdev.uk/latency"
-  status = 200
-  force = true
-
-# ── VRT project — all other /api/* → AWS API Gateway ─────────────────────────
+# Alle /api/* calls → api.fridrdev.uk (Cloudflare Tunnel → Flask API)
 [[redirects]]
   from = "/api/*"
-  to = "https://oku2jon40l.execute-api.eu-west-3.amazonaws.com/:splat"
+  to = "https://api.fridrdev.uk/:splat"
   status = 200
   force = true

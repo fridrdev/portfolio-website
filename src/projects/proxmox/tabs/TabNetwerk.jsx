@@ -87,22 +87,21 @@ export default function TabNetwerk() {
   return (
     <div className="flex flex-col gap-8">
 
-      {/* VMware virtual networks */}
+      {/* GCP infrastructure */}
       <section className="flex flex-col gap-4">
-        <SectionTitle>VMware Workstation Virtuele Netwerken</SectionTitle>
+        <SectionTitle>Google Cloud Platform — VM Overzicht</SectionTitle>
         <Table
-          head={['VMnet', 'Subnet', 'IP (host-side)', 'Functie']}
+          head={['VM', 'Rol', 'Intern IP', 'Zone', 'Status']}
           rows={[
-            ['VMnet2', '192.168.10.0/24', '192.168.10.1',  'New York LAN'],
-            ['VMnet3', '192.168.20.0/24', '192.168.20.1',  'Brussel LAN'],
-            ['VMnet4', '192.168.30.0/24', '192.168.30.1',  'VPN Tunnel / WAN'],
-            ['VMnet5', '192.168.99.0/24', '192.168.99.1',  'Management (Proxmox web-UI)'],
-            ['VMnet8', 'NAT (DHCP)',       '192.168.21.1',  'Internet (package installs)'],
+            ['proxmox-ny',  'Proxmox VE node (New York)',      '10.132.0.3', 'europe-west1-b', '● Online'],
+            ['proxmox-bxl', 'Proxmox VE node (Brussel)',       '10.164.0.2', 'europe-west4-a', '● Online'],
+            ['flask-api',   'Flask API + Cloudflare Tunnel',   '10.132.0.4', 'europe-west1-b', '● Online'],
           ]}
         />
         <p className="text-xs text-gray-600">
-          Alle VMnets zijn geconfigureerd als <strong className="text-gray-400">Host-only</strong> (geïsoleerd), behalve VMnet8 (NAT).
-          De Windows-host heeft een virtuele NIC in elke VMnet zodat Proxmox bereikbaar is via de browser.
+          Alle VM's zitten in het GCP-project <strong className="text-gray-400">proxmox-poc</strong>.
+          Proxmox-nodes communiceren via het interne GCP-netwerk (VPC).
+          De Flask API is publiek bereikbaar via <span className="text-blue-400">https://api.fridrdev.uk</span> dankzij een Cloudflare Zero Trust Tunnel.
         </p>
       </section>
 
@@ -110,18 +109,16 @@ export default function TabNetwerk() {
       <section className="flex flex-col gap-4">
         <SectionTitle>Proxmox Cluster — Node IP-tabel</SectionTitle>
         <Table
-          head={['Node', 'Management IP', 'LAN IP', 'Tunnel IP', 'Web-UI']}
+          head={['Node', 'Intern IP (GCP)', 'Zone', 'Web-UI']}
           rows={[
-            ['pve-ny-01',  '192.168.99.10', '192.168.10.x', '192.168.30.x', 'https://192.168.99.10:8006'],
-            ['pve-bxl-01', '192.168.99.11', '192.168.20.x', '192.168.30.x', 'https://192.168.99.11:8006'],
+            ['proxmox-ny',  '10.132.0.3', 'europe-west1-b', 'https://10.132.0.3:8006'],
+            ['proxmox-bxl', '10.164.0.2', 'europe-west4-a', 'https://10.164.0.2:8006'],
           ]}
         />
         <div className="rounded-xl border border-blue-700/30 bg-blue-900/10 p-4 text-xs text-blue-300">
-          <strong>Opmerking:</strong> De internet-route op pve-ny-01 moet na elke herstart manueel hersteld worden:
-          <pre className="mt-2 text-emerald-300 bg-[#0F1117] rounded p-2 overflow-x-auto">
-            ip link set ens39 up && dhclient ens39{'\n'}
-            ip route add default via 192.168.21.2 dev ens39
-          </pre>
+          <strong>Cluster:</strong> poc-cluster — beide nodes draaien als Google Cloud VM's.
+          De Flask API VM (flask-api) bevindt zich op <code className="text-emerald-300">10.132.0.4</code> (europe-west1-b)
+          en is publiek bereikbaar via <code className="text-blue-300">https://api.fridrdev.uk</code> (Cloudflare Tunnel).
         </div>
       </section>
 
@@ -199,18 +196,18 @@ export default function TabNetwerk() {
 
       {/* Ping benchmark */}
       <section className="flex flex-col gap-4">
-        <SectionTitle>Latentie Resultaten (gemeten met ping)</SectionTitle>
+        <SectionTitle>Latentie Resultaten (GCP inter-region)</SectionTitle>
         <Table
           head={['Scenario', 'Gemiddelde (avg)', 'Packet Loss', 'Methode']}
           rows={[
-            ['Lokaal management (NY → BXL)', '0.286 ms',   '0%', 'ping via VMnet5'],
-            ['Via IPSec VPN tunnel',          '0.681 ms',   '0%', 'ping via VMnet4'],
-            ['Gesimuleerde WAN (+100ms)',      '100.337 ms', '0%', 'tc netem delay 100ms op vmbr0'],
+            ['flask-api → proxmox-ny (zelfde regio)',    '~1–3 ms',   '0%', 'GCP internal europe-west1'],
+            ['flask-api → proxmox-bxl (cross-region)',   '~10–20 ms', '0%', 'GCP internal west1→west4'],
+            ['Gesimuleerde WAN (+100ms, optioneel)',      '~110 ms',   '0%', 'tc netem delay 100ms op vmbr0'],
           ]}
         />
         <p className="text-xs text-gray-600">
-          Latentie simulatie: <code className="text-emerald-300">tc qdisc add dev vmbr0 root netem delay 100ms</code>
-          &nbsp; — simuleert een transatlantische WAN-verbinding (typisch 80–120ms).
+          Cross-region latentie (europe-west1 ↔ europe-west4) simuleert realistische WAN-vertraging
+          tussen datacenters in verschillende steden, zonder extra configuratie.
         </p>
       </section>
 

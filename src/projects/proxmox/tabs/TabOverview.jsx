@@ -54,13 +54,13 @@ function ArchDiagram() {
           <div className="flex-1 rounded-lg border border-blue-500/40 bg-[#0F1117] p-4 flex flex-col gap-2 min-w-0">
             <p className="text-xs font-bold text-blue-400 uppercase tracking-widest">🌆 New York DC</p>
 
-            {/* pve-ny-01 */}
+            {/* proxmox-ny */}
             <div className="rounded border border-[#2D3148] bg-[#1A1D27] p-2.5">
               <div className="flex items-center gap-2">
                 <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-                <span className="text-xs text-white font-mono">pve-ny-01</span>
+                <span className="text-xs text-white font-mono">proxmox-ny</span>
               </div>
-              <p className="text-xs text-gray-600 font-mono mt-0.5">192.168.99.10 · Proxmox VE 9.1</p>
+              <p className="text-xs text-gray-600 font-mono mt-0.5">10.132.0.3 · europe-west1-b</p>
             </div>
 
             {/* VM 100 (NY side) */}
@@ -75,9 +75,9 @@ function ArchDiagram() {
               <p className="text-xs text-gray-600 mt-0.5">Debian 12 · 2 vCPU · 4 GB RAM</p>
             </div>
 
-            {/* pfSense-NY */}
+            {/* Flask API */}
             <div className="mt-auto rounded border border-gray-700/50 bg-[#0F1117] p-1.5 text-center">
-              <p className="text-xs text-gray-500 font-mono">pfSense-NY · 192.168.10.1</p>
+              <p className="text-xs text-gray-500 font-mono">Flask API · 10.132.0.4</p>
             </div>
           </div>
 
@@ -101,13 +101,13 @@ function ArchDiagram() {
           <div className="flex-1 rounded-lg border border-blue-500/40 bg-[#0F1117] p-4 flex flex-col gap-2 min-w-0">
             <p className="text-xs font-bold text-blue-400 uppercase tracking-widest">🏛️ Brussels DC</p>
 
-            {/* pve-bxl-01 */}
+            {/* proxmox-bxl */}
             <div className="rounded border border-[#2D3148] bg-[#1A1D27] p-2.5">
               <div className="flex items-center gap-2">
                 <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-                <span className="text-xs text-white font-mono">pve-bxl-01</span>
+                <span className="text-xs text-white font-mono">proxmox-bxl</span>
               </div>
-              <p className="text-xs text-gray-600 font-mono mt-0.5">192.168.99.11 · Proxmox VE 9.1</p>
+              <p className="text-xs text-gray-600 font-mono mt-0.5">10.164.0.2 · europe-west4-a</p>
             </div>
 
             {/* VM 100 (BXL side) */}
@@ -122,9 +122,9 @@ function ArchDiagram() {
               <p className="text-xs text-gray-600 mt-0.5">Debian 12 · 2 vCPU · 4 GB RAM</p>
             </div>
 
-            {/* pfSense-BXL */}
+            {/* GCP zone */}
             <div className="mt-auto rounded border border-gray-700/50 bg-[#0F1117] p-1.5 text-center">
-              <p className="text-xs text-gray-500 font-mono">pfSense-BXL · 192.168.20.1</p>
+              <p className="text-xs text-gray-500 font-mono">GCP · europe-west4-a</p>
             </div>
           </div>
         </div>
