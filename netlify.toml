@@ -1,6 +1,16 @@
-# Alle /api/* calls → api.fridrdev.uk (Cloudflare Tunnel → Flask API)
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+# /api/* calls → api.fridrdev.uk (Cloudflare Tunnel → Flask API)
 [[redirects]]
   from = "/api/*"
   to = "https://api.fridrdev.uk/:splat"
   status = 200
   force = true
+
+# SPA catch-all — directe URLs geven anders een 404
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
