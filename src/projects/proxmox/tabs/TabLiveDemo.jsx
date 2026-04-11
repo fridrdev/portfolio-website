@@ -164,13 +164,14 @@ export default function TabLiveDemo() {
   const [migrating,      setMigrating]      = useState(null)   // 'bxl' | 'ny' | null
   const [migLog,         setMigLog]         = useState([])
   const [migSlowWarn,    setMigSlowWarn]    = useState(false)
+  const [migElapsed,     setMigElapsed]     = useState(0)      // seconden oplopend tijdens migratie
   const [lastUpdate,     setLastUpdate]     = useState(null)
   const [countdown,      setCountdown]      = useState(0)      // seconds remaining
 
-  const pollRef       = useRef(null)
-  const countdownRef  = useRef(null)
-  const slowWarnRef   = useRef(null)
-  const confirmPollRef = useRef(null)   // polling na migratie tot node veranderd is
+  const pollRef        = useRef(null)
+  const countdownRef   = useRef(null)
+  const slowWarnRef    = useRef(null)
+  const migTimerRef    = useRef(null)   // oplopende secondenteller tijdens migratie
 
   /* ── fetch /status ─────────────────────────────────────────────────────── */
   const fetchStatus = useCallback(async () => {
@@ -282,21 +283,25 @@ export default function TabLiveDemo() {
     setMigrating(direction)
     setMigLog([])
     setMigSlowWarn(false)
-    startPolling(true)
+    setMigElapsed(0)
+
+    // Oplopende secondenteller — stopt in finally
+    migTimerRef.current = setInterval(() => {
+      setMigElapsed(s => s + 1)
+    }, 1_000)
 
     log(`Migratie gestart naar ${destLabel}`)
     log(`VM 100 wordt verplaatst van ${srcLabel} naar ${dest}`)
     log('Verwachte duur: ~47 seconden')
 
-    // Slow warning after 120s
-    slowWarnRef.current = setTimeout(() => {
-      setMigSlowWarn(true)
-    }, 120_000)
+    // Slow warning na 120s (API wacht max 120s server-side)
+    slowWarnRef.current = setTimeout(() => setMigSlowWarn(true), 120_000)
 
     try {
+      // Timeout 135s — geeft server 120s + 15s marge
       const res = await fetch(`${BASE}/migrate/to-${direction}`, {
         method: 'POST',
-        signal: AbortSignal.timeout(180_000),
+        signal: AbortSignal.timeout(135_000),
       })
       const data = await res.json()
 
@@ -309,35 +314,19 @@ export default function TabLiveDemo() {
         throw new Error(data.message ?? data.error ?? 'Onbekende fout')
       }
 
+      // API geeft pas success terug als VM gegarandeerd op dest staat
       log(`✅ Migratie geslaagd! VM 100 staat nu op ${dest}`, 'success')
 
-      // Direct eerste fetch — zet state meteen met verse data
-      await fetchStatus()
-
-      // Poll elke 3s tot current_node echt veranderd is (max 60s)
-      const deadline = Date.now() + 60_000
-      const confirmLoop = async () => {
-        const fresh = await fetchStatus()           // setStatus() → UI re-rendert
-        if (fresh?.vm?.current_node === dest) {
-          // Node bevestigd — sync cooldown en stop
-          const srvCd = fresh?.migration_cooldown?.retry_after_seconds ?? COOLDOWN_SECONDS
-          setCountdown(srvCd)
-          return
-        }
-        if (Date.now() < deadline) {
-          confirmPollRef.current = setTimeout(confirmLoop, 3_000)
-        } else {
-          // Timeout — stel cooldown in op basis van constante
-          setCountdown(COOLDOWN_SECONDS)
-        }
-      }
-      confirmLoop()
+      // Eén fetch om state direct te updaten + cooldown te syncronen
+      const fresh = await fetchStatus()
+      const srvCd = fresh?.migration_cooldown?.retry_after_seconds ?? COOLDOWN_SECONDS
+      setCountdown(srvCd)
 
     } catch (err) {
       log(`❌ Fout: ${err.message}`, 'error')
     } finally {
+      clearInterval(migTimerRef.current)
       clearTimeout(slowWarnRef.current)
-      clearTimeout(confirmPollRef.current)   // stop confirm-loop als er een fout was
       setMigSlowWarn(false)
       setMigrating(null)
       startPolling(false)
@@ -520,17 +509,23 @@ export default function TabLiveDemo() {
           {/* Migration in progress banner */}
           {(migrating || serverInProgress) && (
             <div className="flex flex-col gap-2 rounded-lg border border-blue-700/40 bg-blue-900/15 px-4 py-3">
-              <div className="flex items-center gap-2">
-                <div className="h-4 w-4 rounded-full border-2 border-blue-400 border-t-transparent animate-spin shrink-0" />
-                <p className="text-sm font-medium text-blue-300">Migratie gestart…</p>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <div className="h-4 w-4 rounded-full border-2 border-blue-400 border-t-transparent animate-spin shrink-0" />
+                  <p className="text-sm font-medium text-blue-300">Migratie bezig… VM wordt verplaatst</p>
+                </div>
+                {migrating && (
+                  <span className="font-mono text-sm font-bold text-blue-200 tabular-nums">
+                    {migElapsed}s
+                  </span>
+                )}
               </div>
               <p className="text-xs text-blue-400/80 ml-6">
-                VM 100 wordt verplaatst van{' '}
                 <span className="font-mono">{migrating === 'bxl' ? 'proxmox-ny' : 'proxmox-bxl'}</span>
-                {' '}naar{' '}
+                {' '}→{' '}
                 <span className="font-mono">{migrating === 'bxl' ? 'proxmox-bxl' : 'proxmox-ny'}</span>
               </p>
-              <p className="text-xs text-gray-500 ml-6">Verwachte duur: ~47 seconden</p>
+              <p className="text-xs text-gray-500 ml-6">Verwachte duur: ~47 seconden · API wacht op bevestiging</p>
             </div>
           )}
 

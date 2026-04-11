@@ -53,7 +53,7 @@ def get_proxmox(cfg: dict) -> ProxmoxAPI:
         user=cfg["user"],
         password=cfg["password"],
         verify_ssl=False,
-        timeout=5,
+        timeout=180,
     )
 
 
@@ -257,16 +257,20 @@ def _migrate(from_node: str, to_node: str):
             online=0,
         )
 
-        # Poll tot VM op bestemmingsnode verschijnt (max 180s)
-        for _ in range(180):
-            time.sleep(1)
+        # Poll elke 3s tot VM op bestemmingsnode staat (max 120s)
+        migrated = False
+        for _ in range(40):          # 40 × 3s = 120s
+            time.sleep(3)
             new_node, _ = get_vm_location()
             if new_node == to_node:
+                migrated = True
                 break
-        else:
+
+        if not migrated:
             return jsonify({
                 "status":  "error",
-                "message": "Migratie time-out: VM niet aangekomen op bestemmingsnode.",
+                "code":    "migration_timeout",
+                "message": "Migratie time-out: VM niet aangekomen na 120 seconden.",
             }), 500
 
         last_migration_time = time.time()
