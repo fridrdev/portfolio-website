@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 
 const BASE = '/api'
-const COOLDOWN_SECONDS = 3600   // 1 uur
+const COOLDOWN_SECONDS = 180   // 3 minuten
 
 /* ─── helpers ──────────────────────────────────────────────────────────────── */
 function ts() {
@@ -531,7 +531,7 @@ export default function TabLiveDemo() {
                   Volgende migratie mogelijk over{' '}
                   <span className="font-bold font-mono text-orange-200">{fmtCountdown(countdown)}</span>
                 </p>
-                <p className="text-xs text-gray-500 mt-0.5">Cooldown — 1 uur tussen migraties</p>
+                <p className="text-xs text-gray-500 mt-0.5">Cooldown — 3 minuten tussen migraties</p>
               </div>
               {/* Progress bar */}
               <div className="hidden sm:block h-1.5 w-32 bg-orange-900/40 rounded-full overflow-hidden shrink-0">
