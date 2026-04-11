@@ -131,7 +131,10 @@ export default function TabLiveDemo() {
   const [lastUpdate,     setLastUpdate]     = useState(null)
   const [latency,        setLatency]        = useState(null)
   const [latencyLoading, setLatencyLoading] = useState(false)
-  const timerRef = useRef(null)
+  const [countdown,      setCountdown]      = useState(0)      // seconds remaining in cooldown
+
+  const pollTimerRef     = useRef(null)
+  const countdownRef     = useRef(null)
 
   /* ── fetch /status ── */
   const fetchStatus = useCallback(async () => {
@@ -142,18 +145,64 @@ export default function TabLiveDemo() {
       setStatus(data)
       setApiOffline(false)
       setLastUpdate(new Date())
+
+      // Sync countdown with server's retry_after_seconds
+      const serverSeconds = data?.migration_cooldown?.retry_after_seconds ?? 0
+      setCountdown(prev => {
+        // Only update if server reports more time than local countdown
+        // (avoids jitter from network round-trip)
+        return serverSeconds > prev ? serverSeconds : prev
+      })
+
+      return data
     } catch {
       setApiOffline(true)
+      return null
     } finally {
       setFirstLoad(false)
     }
   }, [])
 
+  /* ── Adaptive polling: every 3s during migration, every 30s otherwise ── */
+  const scheduleNextPoll = useCallback((inProgress) => {
+    clearInterval(pollTimerRef.current)
+    pollTimerRef.current = setInterval(async () => {
+      const data = await fetchStatus()
+      // If migration finished, switch back to 30s polling
+      if (!data?.migration_in_progress) {
+        scheduleNextPoll(false)
+      }
+    }, inProgress ? 3_000 : 30_000)
+  }, [fetchStatus])
+
   useEffect(() => {
     fetchStatus()
-    timerRef.current = setInterval(fetchStatus, 30_000)
-    return () => clearInterval(timerRef.current)
-  }, [fetchStatus])
+    scheduleNextPoll(false)
+    return () => clearInterval(pollTimerRef.current)
+  }, [fetchStatus, scheduleNextPoll])
+
+  /* ── Switch to 3-second polling while migration_in_progress ── */
+  useEffect(() => {
+    const inProgress = status?.migration_in_progress ?? false
+    scheduleNextPoll(inProgress)
+  }, [status?.migration_in_progress, scheduleNextPoll])
+
+  /* ── Countdown timer (client-side, synced on each status fetch) ── */
+  useEffect(() => {
+    clearInterval(countdownRef.current)
+    if (countdown > 0) {
+      countdownRef.current = setInterval(() => {
+        setCountdown(prev => {
+          if (prev <= 1) {
+            clearInterval(countdownRef.current)
+            return 0
+          }
+          return prev - 1
+        })
+      }, 1_000)
+    }
+    return () => clearInterval(countdownRef.current)
+  }, [countdown])
 
   /* ── log helper ── */
   const log = (msg, type = 'info') =>
@@ -161,7 +210,7 @@ export default function TabLiveDemo() {
 
   /* ── migrate ── */
   async function migrate(direction) {
-    if (migrating) return
+    if (migrating || countdown > 0 || status?.migration_in_progress) return
     const dest      = direction === 'bxl' ? 'proxmox-bxl' : 'proxmox-ny'
     const destLabel = direction === 'bxl' ? 'Brussel (proxmox-bxl)' : 'New York (proxmox-ny)'
     setMigrating(direction)
@@ -174,16 +223,25 @@ export default function TabLiveDemo() {
 
       const res = await fetch(`${BASE}/migrate/to-${direction}`, {
         method: 'POST',
-        signal: AbortSignal.timeout(60_000),   // migratie kan even duren
+        signal: AbortSignal.timeout(180_000),   // migratie kan even duren
       })
       const data = await res.json()
+
+      if (res.status === 429) {
+        const retry = data.retry_after_seconds
+        if (retry) setCountdown(retry)
+        throw new Error(data.message ?? 'Rate limit bereikt')
+      }
 
       if (!res.ok || data.status === 'error') {
         throw new Error(data.message ?? data.error ?? 'Onbekende fout')
       }
 
       log(`✅ ${data.message ?? `VM 100 succesvol gemigreerd naar ${dest}`}`, 'success')
-      await fetchStatus()
+      const updated = await fetchStatus()
+      // Set countdown from fresh server data
+      const serverCd = updated?.migration_cooldown?.retry_after_seconds ?? 0
+      if (serverCd > 0) setCountdown(serverCd)
     } catch (err) {
       log(`❌ Fout: ${err.message}`, 'error')
     } finally {
@@ -217,13 +275,16 @@ export default function TabLiveDemo() {
   }
 
   /* ── Derived state ── */
-  const nyInfo    = status?.nodes?.['proxmox-ny']
-  const bxlInfo   = status?.nodes?.['proxmox-bxl']
-  const vmNode    = status?.vm?.current_node   // 'proxmox-ny' | 'proxmox-bxl'
-  const vmStatus  = status?.vm?.status         // 'running' | 'stopped'
+  const nyInfo         = status?.nodes?.['proxmox-ny']
+  const bxlInfo        = status?.nodes?.['proxmox-bxl']
+  const vmNode         = status?.vm?.current_node   // 'proxmox-ny' | 'proxmox-bxl'
+  const vmStatus       = status?.vm?.status         // 'running' | 'stopped'
+  const serverInProgress = status?.migration_in_progress ?? false
 
-  const canMigrateToBxl = !migrating && !apiOffline && vmNode === 'proxmox-ny'  && vmStatus === 'running'
-  const canMigrateToNy  = !migrating && !apiOffline && vmNode === 'proxmox-bxl' && vmStatus === 'running'
+  const blocked = migrating || countdown > 0 || serverInProgress || apiOffline
+
+  const canMigrateToBxl = !blocked && vmNode === 'proxmox-ny'  && vmStatus === 'running'
+  const canMigrateToNy  = !blocked && vmNode === 'proxmox-bxl' && vmStatus === 'running'
 
   return (
     <div className="flex flex-col gap-8">
@@ -298,12 +359,41 @@ export default function TabLiveDemo() {
         <h3 className="text-sm font-semibold uppercase tracking-widest text-gray-500">VM Migratie</h3>
         <div className="rounded-xl border border-[#2D3148] bg-[#12151F] p-5 flex flex-col gap-4">
 
+          {/* Migration in progress banner */}
+          {(migrating || serverInProgress) && (
+            <div className="flex items-center gap-3 rounded-lg border border-blue-700/40 bg-blue-900/20 px-4 py-3">
+              <div className="h-4 w-4 rounded-full border-2 border-blue-400 border-t-transparent animate-spin shrink-0" />
+              <p className="text-sm text-blue-300">Migratie bezig… even geduld</p>
+            </div>
+          )}
+
+          {/* Cooldown banner */}
+          {!migrating && !serverInProgress && countdown > 0 && (
+            <div className="flex items-center justify-between rounded-lg border border-orange-700/40 bg-orange-900/20 px-4 py-3">
+              <p className="text-sm text-orange-300">
+                Volgende migratie mogelijk over{' '}
+                <span className="font-bold font-mono text-orange-200">{countdown}s</span>
+              </p>
+              <div className="h-1.5 w-24 bg-orange-900/40 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-orange-500 rounded-full transition-all duration-1000"
+                  style={{ width: `${(countdown / 60) * 100}%` }}
+                />
+              </div>
+            </div>
+          )}
+
           <div className="flex flex-col sm:flex-row gap-3">
             {/* NY → BXL */}
             <button
               onClick={() => migrate('bxl')}
               disabled={!canMigrateToBxl}
-              title={!canMigrateToBxl && vmNode !== 'proxmox-ny' ? 'VM staat al op proxmox-bxl' : undefined}
+              title={
+                countdown > 0 ? `Cooldown: nog ${countdown}s`
+                : serverInProgress ? 'Migratie bezig'
+                : vmNode !== 'proxmox-ny' ? 'VM staat niet op proxmox-ny'
+                : undefined
+              }
               className="flex-1 flex items-center justify-center gap-2 py-3 rounded-lg border border-blue-600/60 bg-blue-900/20 text-blue-300 text-sm font-medium hover:bg-blue-900/40 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
             >
               {migrating === 'bxl'
@@ -316,7 +406,12 @@ export default function TabLiveDemo() {
             <button
               onClick={() => migrate('ny')}
               disabled={!canMigrateToNy}
-              title={!canMigrateToNy && vmNode !== 'proxmox-bxl' ? 'VM staat al op proxmox-ny' : undefined}
+              title={
+                countdown > 0 ? `Cooldown: nog ${countdown}s`
+                : serverInProgress ? 'Migratie bezig'
+                : vmNode !== 'proxmox-bxl' ? 'VM staat niet op proxmox-bxl'
+                : undefined
+              }
               className="flex-1 flex items-center justify-center gap-2 py-3 rounded-lg border border-blue-600/60 bg-blue-900/20 text-blue-300 text-sm font-medium hover:bg-blue-900/40 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
             >
               {migrating === 'ny'
@@ -327,7 +422,7 @@ export default function TabLiveDemo() {
           </div>
 
           {/* Why disabled */}
-          {!apiOffline && vmStatus !== 'running' && (
+          {!apiOffline && !migrating && !serverInProgress && countdown === 0 && vmStatus !== 'running' && (
             <p className="text-xs text-yellow-500 text-center">
               VM 100 moet in status <strong>running</strong> zijn voor live migratie.
             </p>
