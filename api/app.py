@@ -191,6 +191,46 @@ def ping_nodes_endpoint():
     })
 
 
+@app.route("/verify", methods=["GET"])
+def verify():
+    """
+    Voert qm status 100 uit op beide nodes via de Proxmox API.
+    Geeft terug welke node de VM heeft en de ruwe status output.
+    """
+    results = []
+    vm_confirmed_on = None
+
+    for node_name, cfg in NODES.items():
+        entry = {
+            "node":    node_name,
+            "vm_id":   VM_ID,
+            "command": f"qm status {VM_ID}",
+            "output":  None,
+            "has_vm":  False,
+        }
+        try:
+            px = get_proxmox(cfg)
+            vm = px.nodes(node_name).qemu(VM_ID).status.current.get()
+            vm_status = vm.get("status", "unknown")
+            entry["output"] = f"status: {vm_status}"
+            entry["has_vm"] = True
+            vm_confirmed_on = node_name
+        except Exception as e:
+            err_str = str(e)
+            # Proxmox geeft 500 + "does not exist" als de VM niet op deze node staat
+            if "does not exist" in err_str.lower() or "500" in err_str:
+                entry["output"] = "Configuration file does not exist"
+            else:
+                entry["output"] = f"error: {err_str}"
+        results.append(entry)
+
+    return jsonify({
+        "vm_id":           VM_ID,
+        "vm_confirmed_on": vm_confirmed_on,
+        "results":         results,
+    })
+
+
 @app.route("/migrate/to-bxl", methods=["POST"])
 def migrate_to_bxl():
     return _migrate(from_node="proxmox-ny", to_node="proxmox-bxl")

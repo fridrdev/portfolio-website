@@ -167,6 +167,8 @@ export default function TabLiveDemo() {
   const [migElapsed,     setMigElapsed]     = useState(0)      // seconden oplopend tijdens migratie
   const [lastUpdate,     setLastUpdate]     = useState(null)
   const [countdown,      setCountdown]      = useState(0)      // seconds remaining
+  const [verify,         setVerify]         = useState(null)
+  const [verifyLoading,  setVerifyLoading]  = useState(false)
 
   const pollRef        = useRef(null)
   const countdownRef   = useRef(null)
@@ -222,6 +224,20 @@ export default function TabLiveDemo() {
       setPingNodes({ error: e.message })
     } finally {
       setPingLoading(false)
+    }
+  }, [])
+
+  /* ── fetch /verify ────────────────────────────────────────────────────── */
+  const fetchVerify = useCallback(async () => {
+    setVerifyLoading(true)
+    try {
+      const res = await fetch(`${BASE}/verify`, { signal: AbortSignal.timeout(20_000) })
+      if (!res.ok) throw new Error('HTTP ' + res.status)
+      setVerify(await res.json())
+    } catch (e) {
+      setVerify({ error: e.message })
+    } finally {
+      setVerifyLoading(false)
     }
   }, [])
 
@@ -371,6 +387,16 @@ export default function TabLiveDemo() {
               Laatste update: {lastUpdate.toLocaleTimeString('nl-BE')}
             </span>
           )}
+          <button
+            onClick={fetchVerify}
+            disabled={verifyLoading || apiOffline}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-[#2D3148] text-xs text-gray-400 hover:text-white hover:border-gray-500 disabled:opacity-40 transition-colors"
+          >
+            {verifyLoading
+              ? <><div className="h-3 w-3 rounded-full border border-emerald-400 border-t-transparent animate-spin" /> Verifiëren…</>
+              : '🔍 Verifieer locatie'
+            }
+          </button>
           <button
             onClick={refreshAll}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-[#2D3148] text-xs text-gray-400 hover:text-white hover:border-gray-500 transition-colors"
@@ -608,6 +634,65 @@ export default function TabLiveDemo() {
 
           <MigLog lines={migLog} />
         </div>
+      </section>
+
+      {/* ────────────────────────────────────────────────────────────────── */}
+      {/* CLUSTER VERIFICATIE                                               */}
+      {/* ────────────────────────────────────────────────────────────────── */}
+      <section className="flex flex-col gap-3">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <h3 className="text-xs font-semibold uppercase tracking-widest text-gray-500">
+            Cluster Verificatie
+          </h3>
+          <button
+            onClick={fetchVerify}
+            disabled={verifyLoading || apiOffline}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded border border-[#2D3148] text-xs text-gray-400 hover:text-white hover:border-gray-500 disabled:opacity-40 transition-colors"
+          >
+            {verifyLoading
+              ? <><div className="h-3 w-3 rounded-full border border-emerald-400 border-t-transparent animate-spin" /> Verifiëren…</>
+              : '🔍 Voer verificatie uit'
+            }
+          </button>
+        </div>
+
+        {/* Terminal box */}
+        {verify && !verify.error && (
+          <div className="rounded-lg border border-[#2D3148] bg-[#0A0C12] p-4 font-mono text-xs flex flex-col gap-3">
+            {verify.results?.map((r) => (
+              <div key={r.node} className="flex flex-col gap-0.5">
+                <p className="text-gray-500">
+                  <span className="text-blue-400">[{r.node}]</span>
+                  {'  '}
+                  <span className="text-gray-600">$</span>
+                  {' '}
+                  <span className="text-gray-300">qm status {r.vm_id ?? 100}</span>
+                </p>
+                <p className={r.has_vm ? 'text-emerald-400 pl-4' : 'text-gray-500 pl-4'}>
+                  {r.output}
+                </p>
+              </div>
+            ))}
+
+            {/* Conclusie */}
+            <div className="border-t border-[#2D3148] pt-3">
+              {verify.vm_confirmed_on
+                ? <p className="text-emerald-400">✅ VM {verify.vm_id ?? 100} bevestigd op {verify.vm_confirmed_on}</p>
+                : <p className="text-red-400">❌ VM {verify.vm_id ?? 100} niet gevonden op een van de nodes</p>
+              }
+            </div>
+          </div>
+        )}
+
+        {verify?.error && (
+          <p className="text-xs text-red-400 font-mono px-1">{verify.error}</p>
+        )}
+
+        {!verify && !verifyLoading && (
+          <p className="text-xs text-gray-600 text-center py-1">
+            Klik "🔍 Verifieer locatie" om live via de Proxmox API te bevestigen op welke node VM 100 staat.
+          </p>
+        )}
       </section>
 
       {/* Keyframes */}
