@@ -15,12 +15,13 @@ export default function TabMonitoring() {
       {/* Grafana iframe */}
       <div className="rounded-xl border border-[#2D3148] overflow-hidden">
         <iframe
-          src="https://grafana.fridrdev.uk/public-dashboards/85df0405e5ba4e829c7fdbb6102ea274"
+          src="https://grafana.fridrdev.uk/d/rYdddlPWk/node-exporter-full?orgId=1&refresh=30s&kiosk=tv&theme=dark"
           width="100%"
           height="800"
           frameBorder="0"
           title="Grafana — proxmox-ny live dashboard"
           allow="fullscreen"
+          sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
         />
       </div>
 
