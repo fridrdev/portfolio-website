@@ -1,12 +1,11 @@
 import { useState, useRef } from 'react'
 
-const BASE_URL = '/api'
-const ENDPOINT = '/recommendation-service'
+const ENDPOINT = 'https://oku2jon40l.execute-api.eu-west-3.amazonaws.com/recommendation-service'
 
 async function singleRequest(idx) {
   const start = performance.now()
   try {
-    const res = await fetch(`${BASE_URL}${ENDPOINT}`)
+    const res = await fetch(ENDPOINT)
     const ms = Math.round(performance.now() - start)
     const type = res.status >= 500 ? 'error' : ms > 1000 ? 'slow' : 'ok'
     return { idx, status: res.status, ms, type }
