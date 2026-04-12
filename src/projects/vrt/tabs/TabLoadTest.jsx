@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react'
 
-const ENDPOINT = 'https://oku2jon40l.execute-api.eu-west-3.amazonaws.com/recommendation-service'
+const ENDPOINT = '/api/recommendation-service'
 
 async function singleRequest(idx) {
   const start = performance.now()
