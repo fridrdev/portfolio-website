@@ -223,10 +223,18 @@ export default function TabLiveDemo() {
   /* ── fetch /ping-nodes ─────────────────────────────────────────────────── */
   const fetchPingNodes = useCallback(async () => {
     setPingLoading(true)
+    setPingNodes(null)   // reset zodat oude data niet zichtbaar blijft
     try {
-      const res = await fetch(`${BASE}/ping-nodes`, { signal: AbortSignal.timeout(15_000) })
+      // 30s timeout: ping -c 2 op 2 hosts = min 4s + Cloudflare tunnel overhead
+      const res = await fetch(`${BASE}/ping-nodes`, { signal: AbortSignal.timeout(30_000) })
       if (!res.ok) throw new Error('HTTP ' + res.status)
-      setPingNodes(await res.json())
+      const data = await res.json()
+      // Zet error als alle drie de metingen null zijn (API bereikbaar maar nodes niet)
+      if (data.flask_to_ny?.latency_ms == null && data.flask_to_bxl?.latency_ms == null) {
+        setPingNodes({ error: 'Nodes niet bereikbaar via ping' })
+      } else {
+        setPingNodes(data)
+      }
     } catch (e) {
       setPingNodes({ error: e.message })
     } finally {
@@ -351,6 +359,15 @@ export default function TabLiveDemo() {
           log(`Status ophalen mislukt, opnieuw proberen… (poging ${attempt}/5)`, 'warn')
         }
       }
+
+      if (fresh?.vm?.current_node === dest) {
+        log(`✅ Status bijgewerkt — VM staat nu op ${dest}`, 'success')
+      } else if (fresh) {
+        log(`⚠️ Status bijgewerkt maar VM locatie onverwacht: ${fresh.vm?.current_node ?? '?'} — klik Refresh`, 'warn')
+      } else {
+        log('⚠️ Status kon niet worden bijgewerkt — klik Refresh', 'warn')
+      }
+
       const srvCd = fresh?.migration_cooldown?.retry_after_seconds ?? COOLDOWN_SECONDS
       setCountdown(srvCd)
 
@@ -506,29 +523,42 @@ export default function TabLiveDemo() {
             </>
           )}
 
-          {/* Ping uitvoeren — 3 directe rijen, vervangt latency rijen niet */}
-          {pingNodes && !pingNodes.error && (
+          {/* Ping uitvoeren — loading skelet */}
+          {pingLoading && (
+            <>
+              <div className="border-t border-[#2D3148] my-1" />
+              {['flask-api → proxmox-ny', 'flask-api → proxmox-bxl', 'proxmox-ny → proxmox-bxl (via GCP VPC)'].map(label => (
+                <div key={label} className="flex items-center justify-between px-4 py-2.5 rounded-lg border border-[#2D3148] bg-[#1A1D27]">
+                  <p className="text-xs text-gray-400 font-mono">{label}</p>
+                  <div className="h-3 w-12 rounded bg-[#2D3148] animate-pulse" />
+                </div>
+              ))}
+            </>
+          )}
+
+          {/* Ping uitvoeren — resultaten */}
+          {pingNodes && !pingNodes.error && !pingLoading && (
             <>
               <div className="border-t border-[#2D3148] my-1" />
               <LatencyRow
                 label="flask-api → proxmox-ny"
-                ms={pingNodes?.flask_to_ny?.latency_ms}
-                status={pingNodes?.flask_to_ny?.status}
+                ms={pingNodes.flask_to_ny?.latency_ms}
+                status={pingNodes.flask_to_ny?.status}
               />
               <LatencyRow
                 label="flask-api → proxmox-bxl"
-                ms={pingNodes?.flask_to_bxl?.latency_ms}
-                status={pingNodes?.flask_to_bxl?.status}
+                ms={pingNodes.flask_to_bxl?.latency_ms}
+                status={pingNodes.flask_to_bxl?.status}
               />
               <LatencyRow
                 label="proxmox-ny → proxmox-bxl (via GCP VPC)"
-                ms={pingNodes?.ny_to_bxl?.latency_ms}
-                status={pingNodes?.ny_to_bxl?.status}
+                ms={pingNodes.ny_to_bxl?.latency_ms}
+                status={pingNodes.ny_to_bxl?.status}
               />
             </>
           )}
-          {pingNodes?.error && (
-            <p className="text-xs text-red-400 px-1">{pingNodes.error}</p>
+          {pingNodes?.error && !pingLoading && (
+            <p className="text-xs text-red-400 px-1">⚠️ {pingNodes.error}</p>
           )}
           {!pingNodes && !pingLoading && (
             <p className="text-xs text-gray-600 text-center py-1">
