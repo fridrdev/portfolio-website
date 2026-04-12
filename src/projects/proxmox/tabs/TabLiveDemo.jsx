@@ -190,6 +190,13 @@ export default function TabLiveDemo() {
       if (srvSec > 0) {
         setCountdown(prev => srvSec > prev ? srvSec : prev)
       }
+
+      // Auto-verify bij elke status refresh (fire-and-forget, geen await)
+      fetch(`${BASE}/verify`, { signal: AbortSignal.timeout(20_000) })
+        .then(r => r.ok ? r.json() : null)
+        .then(d => { if (d) setVerify(d) })
+        .catch(() => {})
+
       return data
     } catch {
       setApiOffline(true)
@@ -486,37 +493,48 @@ export default function TabLiveDemo() {
           ) : (
             <>
               <LatencyRow
-                label="flask-api ↔ proxmox-ny"
+                label="NY datacenter latency"
                 ms={latency?.['proxmox-ny']?.latency_ms}
               />
               <LatencyRow
-                label="flask-api ↔ proxmox-bxl"
+                label="BXL datacenter latency"
                 ms={latency?.['proxmox-bxl']?.latency_ms}
               />
             </>
           )}
 
           {/* Ping: NY ↔ BXL */}
-          {pingNodes && !pingNodes.error && (
-            <>
-              <LatencyRow
-                label="NY → flask-api"
-                ms={pingNodes?.ny_to_flask?.latency_ms}
-                status={pingNodes?.ny_to_flask?.status}
-              />
-              <LatencyRow
-                label="BXL → flask-api"
-                ms={pingNodes?.bxl_to_flask?.latency_ms}
-                status={pingNodes?.bxl_to_flask?.status}
-              />
-            </>
-          )}
+          {pingNodes && !pingNodes.error && (() => {
+            const nyMs  = pingNodes?.ny_to_flask?.latency_ms
+            const bxlMs = pingNodes?.bxl_to_flask?.latency_ms
+            const combined = nyMs != null && bxlMs != null
+              ? Math.round((nyMs + bxlMs) / 2)
+              : null
+            return (
+              <>
+                <LatencyRow
+                  label="NY datacenter latency"
+                  ms={nyMs}
+                  status={pingNodes?.ny_to_flask?.status}
+                />
+                <LatencyRow
+                  label="BXL datacenter latency"
+                  ms={bxlMs}
+                  status={pingNodes?.bxl_to_flask?.status}
+                />
+                <LatencyRow
+                  label="NY ↔ BXL verbinding (via GCP VPC)"
+                  ms={combined}
+                />
+              </>
+            )
+          })()}
           {pingNodes?.error && (
             <p className="text-xs text-red-400 px-1">{pingNodes.error}</p>
           )}
           {!pingNodes && !pingLoading && (
             <p className="text-xs text-gray-600 text-center py-1">
-              Klik "Ping uitvoeren" voor live NY ↔ BXL ping resultaten.
+              Klik "Ping uitvoeren" voor live NY ↔ BXL verbindingslatentie.
             </p>
           )}
         </div>
@@ -657,28 +675,41 @@ export default function TabLiveDemo() {
         </div>
 
         {/* Terminal box */}
-        {verify && !verify.error && (
-          <div className="rounded-lg border border-[#2D3148] bg-[#0A0C12] p-4 font-mono text-xs flex flex-col gap-3">
-            {verify.results?.map((r) => (
-              <div key={r.node} className="flex flex-col gap-0.5">
+        {verify && !verify.error && (verify['proxmox-ny'] || verify['proxmox-bxl']) && (
+          <div className="rounded-lg border border-[#2D3148] bg-[#0d1117] p-4 font-mono text-xs flex flex-col gap-3">
+            {/* proxmox-ny */}
+            {verify['proxmox-ny'] != null && (
+              <div className="flex flex-col gap-0.5">
                 <p className="text-gray-500">
-                  <span className="text-blue-400">[{r.node}]</span>
-                  {'  '}
+                  <span className="text-blue-400">[proxmox-ny] </span>
                   <span className="text-gray-600">$</span>
-                  {' '}
-                  <span className="text-gray-300">qm status {r.vm_id ?? 100}</span>
+                  <span className="text-gray-300"> qm status 100</span>
                 </p>
-                <p className={r.has_vm ? 'text-emerald-400 pl-4' : 'text-gray-500 pl-4'}>
-                  {r.output}
+                <p className={`pl-4 ${verify['proxmox-ny'].startsWith('status:') ? 'text-emerald-400' : 'text-gray-500'}`}>
+                  → {verify['proxmox-ny']}
                 </p>
               </div>
-            ))}
+            )}
+
+            {/* proxmox-bxl */}
+            {verify['proxmox-bxl'] != null && (
+              <div className="flex flex-col gap-0.5">
+                <p className="text-gray-500">
+                  <span className="text-blue-400">[proxmox-bxl]</span>
+                  <span className="text-gray-600"> $</span>
+                  <span className="text-gray-300"> qm status 100</span>
+                </p>
+                <p className={`pl-4 ${verify['proxmox-bxl'].startsWith('status:') ? 'text-emerald-400' : 'text-gray-500'}`}>
+                  → {verify['proxmox-bxl']}
+                </p>
+              </div>
+            )}
 
             {/* Conclusie */}
             <div className="border-t border-[#2D3148] pt-3">
-              {verify.vm_confirmed_on
-                ? <p className="text-emerald-400">✅ VM {verify.vm_id ?? 100} bevestigd op {verify.vm_confirmed_on}</p>
-                : <p className="text-red-400">❌ VM {verify.vm_id ?? 100} niet gevonden op een van de nodes</p>
+              {verify.confirmed_node
+                ? <p className="text-emerald-400">✅ VM 100 bevestigd op {verify.confirmed_node}</p>
+                : <p className="text-red-400">❌ VM 100 niet gevonden op een van de nodes</p>
               }
             </div>
           </div>
