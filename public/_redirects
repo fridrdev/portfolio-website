@@ -1,0 +1,2 @@
+/api/* https://api.fridrdev.uk/:splat 200
+/* /index.html 200
