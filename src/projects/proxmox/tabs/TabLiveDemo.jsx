@@ -162,8 +162,14 @@ export default function TabLiveDemo() {
   const [pingNodes,      setPingNodes]      = useState(null)
   const [pingLoading,    setPingLoading]    = useState(false)
   const [migrating,      setMigrating]      = useState(null)   // 'bxl' | 'ny' | null
-  const [migLog,         setMigLog]         = useState([])
+  const [migLog,         setMigLog]         = useState(() => {
+    try { return JSON.parse(localStorage.getItem('proxmox_migration_log')) ?? [] }
+    catch { return [] }
+  })
   const [migSlowWarn,    setMigSlowWarn]    = useState(false)
+  const [lastKnownNode,  setLastKnownNode]  = useState(
+    () => localStorage.getItem('proxmox_last_node') ?? null
+  )
   const [migElapsed,     setMigElapsed]     = useState(0)      // seconden oplopend tijdens migratie
   const [lastUpdate,     setLastUpdate]     = useState(null)
   const [countdown,      setCountdown]      = useState(0)      // seconds remaining
@@ -184,6 +190,13 @@ export default function TabLiveDemo() {
       setStatus(data)
       setApiOffline(false)
       setLastUpdate(new Date())
+
+      // Sla laatste bekende node op in localStorage
+      const node = data?.vm?.current_node
+      if (node) {
+        setLastKnownNode(node)
+        localStorage.setItem('proxmox_last_node', node)
+      }
 
       // Sync countdown from server
       const srvSec = data?.migration_cooldown?.retry_after_seconds ?? 0
@@ -289,7 +302,17 @@ export default function TabLiveDemo() {
 
   /* ── log helper ────────────────────────────────────────────────────────── */
   const log = (msg, type = 'info') =>
-    setMigLog(prev => [...prev, { msg, type, time: ts() }])
+    setMigLog(prev => {
+      const next = [...prev, { msg, type, time: ts() }].slice(-20)
+      try { localStorage.setItem('proxmox_migration_log', JSON.stringify(next)) } catch {}
+      return next
+    })
+
+  /* ── wis log ────────────────────────────────────────────────────────────── */
+  function clearLog() {
+    setMigLog([])
+    try { localStorage.removeItem('proxmox_migration_log') } catch {}
+  }
 
   /* ── refresh all ───────────────────────────────────────────────────────── */
   function refreshAll() {
@@ -379,9 +402,14 @@ export default function TabLiveDemo() {
   /* ── Loading ────────────────────────────────────────────────────────────── */
   if (firstLoad) {
     return (
-      <div className="flex items-center justify-center py-24 gap-3">
+      <div className="flex flex-col items-center justify-center py-24 gap-3">
         <div className="h-5 w-5 rounded-full border-2 border-blue-500 border-t-transparent animate-spin" />
         <p className="text-gray-500 text-sm">Verbinden met API…</p>
+        {lastKnownNode && (
+          <p className="text-xs text-gray-600">
+            Laatste bekende locatie: <span className="font-mono text-blue-400">{lastKnownNode}</span>
+          </p>
+        )}
       </div>
     )
   }
@@ -424,6 +452,14 @@ export default function TabLiveDemo() {
               : '🔍 Verifieer locatie'
             }
           </button>
+          {migLog.length > 0 && (
+            <button
+              onClick={clearLog}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-[#2D3148] text-xs text-gray-600 hover:text-red-400 hover:border-red-700/50 transition-colors"
+            >
+              🗑 Wis log
+            </button>
+          )}
           <button
             onClick={refreshAll}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-[#2D3148] text-xs text-gray-400 hover:text-white hover:border-gray-500 transition-colors"
