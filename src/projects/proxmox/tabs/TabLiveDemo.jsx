@@ -339,15 +339,16 @@ export default function TabLiveDemo() {
 
       // API geeft pas success terug als VM gegarandeerd op dest staat
       log(`✅ Migratie geslaagd! VM 100 staat nu op ${dest}`, 'success')
+      log('Status wordt bijgewerkt…', 'warn')
 
-      // Status ophalen met retry — API kan even herstarten na migratie
+      // Wacht eerst 8s, dan max 5 pogingen met 8s tussenpauze
       let fresh = null
-      for (let attempt = 1; attempt <= 3; attempt++) {
+      for (let attempt = 1; attempt <= 5; attempt++) {
+        await new Promise(r => setTimeout(r, 8_000))
         fresh = await fetchStatus()
         if (fresh) break
-        if (attempt < 3) {
-          log(`Status ophalen mislukt, opnieuw proberen over 5s… (poging ${attempt}/3)`, 'warn')
-          await new Promise(r => setTimeout(r, 5_000))
+        if (attempt < 5) {
+          log(`Status ophalen mislukt, opnieuw proberen… (poging ${attempt}/5)`, 'warn')
         }
       }
       const srvCd = fresh?.migration_cooldown?.retry_after_seconds ?? COOLDOWN_SECONDS
