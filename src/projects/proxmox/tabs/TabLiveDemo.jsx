@@ -228,13 +228,7 @@ export default function TabLiveDemo() {
       // 30s timeout: ping -c 2 op 2 hosts = min 4s + Cloudflare tunnel overhead
       const res = await fetch(`${BASE}/ping-nodes`, { signal: AbortSignal.timeout(30_000) })
       if (!res.ok) throw new Error('HTTP ' + res.status)
-      const data = await res.json()
-      // Zet error als alle drie de metingen null zijn (API bereikbaar maar nodes niet)
-      if (data.flask_to_ny?.latency_ms == null && data.flask_to_bxl?.latency_ms == null) {
-        setPingNodes({ error: 'Nodes niet bereikbaar via ping' })
-      } else {
-        setPingNodes(data)
-      }
+      setPingNodes(await res.json())
     } catch (e) {
       setPingNodes({ error: e.message })
     } finally {
@@ -537,26 +531,27 @@ export default function TabLiveDemo() {
           )}
 
           {/* Ping uitvoeren — resultaten */}
-          {pingNodes && !pingNodes.error && !pingLoading && (
-            <>
-              <div className="border-t border-[#2D3148] my-1" />
-              <LatencyRow
-                label="flask-api → proxmox-ny"
-                ms={pingNodes.flask_to_ny?.latency_ms}
-                status={pingNodes.flask_to_ny?.status}
-              />
-              <LatencyRow
-                label="flask-api → proxmox-bxl"
-                ms={pingNodes.flask_to_bxl?.latency_ms}
-                status={pingNodes.flask_to_bxl?.status}
-              />
-              <LatencyRow
-                label="proxmox-ny → proxmox-bxl (via GCP VPC)"
-                ms={pingNodes.ny_to_bxl?.latency_ms}
-                status={pingNodes.ny_to_bxl?.status}
-              />
-            </>
-          )}
+          {pingNodes && !pingNodes.error && !pingLoading && (() => {
+            // API levert ny_to_flask / bxl_to_flask
+            const nyMs  = pingNodes.ny_to_flask?.latency_ms  ?? pingNodes.flask_to_ny?.latency_ms
+            const bxlMs = pingNodes.bxl_to_flask?.latency_ms ?? pingNodes.flask_to_bxl?.latency_ms
+            const nyStatus  = pingNodes.ny_to_flask?.status  ?? pingNodes.flask_to_ny?.status
+            const bxlStatus = pingNodes.bxl_to_flask?.status ?? pingNodes.flask_to_bxl?.status
+            // ny→bxl: som van beide RTTs (flask-api staat naast proxmox-ny in europe-west1)
+            const vpcMs = nyMs != null && bxlMs != null ? Math.round((nyMs + bxlMs) * 10) / 10 : null
+            return (
+              <>
+                <div className="border-t border-[#2D3148] my-1" />
+                <LatencyRow label="flask-api → proxmox-ny"  ms={nyMs}  status={nyStatus} />
+                <LatencyRow label="flask-api → proxmox-bxl" ms={bxlMs} status={bxlStatus} />
+                <LatencyRow
+                  label="proxmox-ny → proxmox-bxl (via GCP VPC)"
+                  ms={vpcMs}
+                  status={vpcMs != null ? 'ok' : 'timeout'}
+                />
+              </>
+            )
+          })()}
           {pingNodes?.error && !pingLoading && (
             <p className="text-xs text-red-400 px-1">⚠️ {pingNodes.error}</p>
           )}
