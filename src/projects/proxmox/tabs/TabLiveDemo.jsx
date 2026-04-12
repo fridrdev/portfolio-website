@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 
-const BASE = '/api'
+const BASE = 'https://api.fridrdev.uk'
 const COOLDOWN_SECONDS = 180   // 3 minuten
 
 /* ─── helpers ──────────────────────────────────────────────────────────────── */

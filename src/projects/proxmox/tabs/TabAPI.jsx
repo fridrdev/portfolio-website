@@ -180,19 +180,19 @@ export default function TabAPI() {
         <h3 className="text-sm font-semibold uppercase tracking-widest text-gray-500">Code Voorbeelden</h3>
 
         <CodeBlock lang="JavaScript (fetch)" code={`// Status ophalen
-const res = await fetch('/api/status');
+const res = await fetch('https://api.fridrdev.uk/status');
 const data = await res.json();
 console.log(data.nodes['proxmox-ny'].status); // "online"
 
 // VM migreren naar Brussel
-const migration = await fetch('/api/migrate/to-bxl');
+const migration = await fetch('https://api.fridrdev.uk/migrate/to-bxl', { method: 'POST' });
 const result = await migration.json();
-// { "status": "migration_started", "vm": 100, ... }
+// { "status": "success", "message": "VM 100 gemigreerd naar proxmox-bxl" }
 
 // Ping alle nodes
-const ping = await fetch('/api/ping');
+const ping = await fetch('https://api.fridrdev.uk/ping-nodes');
 const latency = await ping.json();
-console.log(latency.ny_to_bxl); // round-trip time`} />
+console.log(latency.ny_to_bxl.latency_ms); // round-trip time in ms`} />
 
         <CodeBlock lang="Python (requests)" code={`import requests
 
