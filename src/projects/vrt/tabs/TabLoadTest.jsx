@@ -44,17 +44,13 @@ export default function TabLoadTest({ onComplete }) {
     setResults([])
 
     const collected = []
-    const promises = Array.from({ length: count }, (_, i) =>
-      singleRequest(i + 1).then(res => {
-        if (!abortRef.current) {
-          collected.push(res)
-          setDone(d => d + 1)
-          setResults(r => [...r, res])
-        }
-        return res
-      })
-    )
-    await Promise.all(promises)
+    for (let i = 0; i < count; i++) {
+      if (abortRef.current) break
+      const res = await singleRequest(i + 1)
+      collected.push(res)
+      setDone(i + 1)
+      setResults(r => [...r, res])
+    }
     setRunning(false)
 
     // Notify parent with final stats
