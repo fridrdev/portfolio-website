@@ -487,54 +487,43 @@ export default function TabLiveDemo() {
         </div>
 
         <div className="flex flex-col gap-2">
-          {/* Latency: flask-api → nodes */}
+          {/* Latency automatisch bij laden — alleen NY en BXL basismeting */}
           {latency?.error ? (
             <p className="text-xs text-red-400 px-1">{latency.error}</p>
           ) : (
             <>
-              <LatencyRow
-                label="NY datacenter latency"
-                ms={latency?.['proxmox-ny']?.latency_ms}
-              />
-              <LatencyRow
-                label="BXL datacenter latency"
-                ms={latency?.['proxmox-bxl']?.latency_ms}
-              />
+              <LatencyRow label="NY datacenter latency"  ms={latency?.['proxmox-ny']?.latency_ms} />
+              <LatencyRow label="BXL datacenter latency" ms={latency?.['proxmox-bxl']?.latency_ms} />
             </>
           )}
 
-          {/* Ping: NY ↔ BXL */}
-          {pingNodes && !pingNodes.error && (() => {
-            const nyMs  = pingNodes?.ny_to_flask?.latency_ms
-            const bxlMs = pingNodes?.bxl_to_flask?.latency_ms
-            const combined = nyMs != null && bxlMs != null
-              ? Math.round((nyMs + bxlMs) / 2)
-              : null
-            return (
-              <>
-                <LatencyRow
-                  label="NY datacenter latency"
-                  ms={nyMs}
-                  status={pingNodes?.ny_to_flask?.status}
-                />
-                <LatencyRow
-                  label="BXL datacenter latency"
-                  ms={bxlMs}
-                  status={pingNodes?.bxl_to_flask?.status}
-                />
-                <LatencyRow
-                  label="NY ↔ BXL verbinding (via GCP VPC)"
-                  ms={combined}
-                />
-              </>
-            )
-          })()}
+          {/* Ping uitvoeren — 3 directe rijen, vervangt latency rijen niet */}
+          {pingNodes && !pingNodes.error && (
+            <>
+              <div className="border-t border-[#2D3148] my-1" />
+              <LatencyRow
+                label="flask-api → proxmox-ny"
+                ms={pingNodes?.flask_to_ny?.latency_ms}
+                status={pingNodes?.flask_to_ny?.status}
+              />
+              <LatencyRow
+                label="flask-api → proxmox-bxl"
+                ms={pingNodes?.flask_to_bxl?.latency_ms}
+                status={pingNodes?.flask_to_bxl?.status}
+              />
+              <LatencyRow
+                label="proxmox-ny → proxmox-bxl (via GCP VPC)"
+                ms={pingNodes?.ny_to_bxl?.latency_ms}
+                status={pingNodes?.ny_to_bxl?.status}
+              />
+            </>
+          )}
           {pingNodes?.error && (
             <p className="text-xs text-red-400 px-1">{pingNodes.error}</p>
           )}
           {!pingNodes && !pingLoading && (
             <p className="text-xs text-gray-600 text-center py-1">
-              Klik "Ping uitvoeren" voor live NY ↔ BXL verbindingslatentie.
+              Klik "Ping uitvoeren" voor volledige verbindingsmeting.
             </p>
           )}
         </div>

@@ -175,18 +175,34 @@ def latency():
 
 @app.route("/ping-nodes", methods=["GET"])
 def ping_nodes_endpoint():
-    """Ping van flask-api naar beide nodes, gerapporteerd per richting."""
+    """
+    Meet latentie van flask-api naar beide nodes.
+    ny_to_bxl wordt berekend als som van flask→ny + flask→bxl
+    (flask-api zit in dezelfde GCP regio als proxmox-ny, dus dit is een goede benadering).
+    """
     ny_ms  = ping_ms(NODES["proxmox-ny"]["host"])
     bxl_ms = ping_ms(NODES["proxmox-bxl"]["host"])
 
+    # NY → BXL: als beide bereikbaar zijn, bereken via triangulair pad
+    if ny_ms is not None and bxl_ms is not None:
+        ny_to_bxl_ms = round(ny_ms + bxl_ms, 2)
+        ny_to_bxl_status = "ok"
+    else:
+        ny_to_bxl_ms = None
+        ny_to_bxl_status = "timeout"
+
     return jsonify({
-        "ny_to_flask": {
+        "flask_to_ny": {
             "latency_ms": ny_ms,
             "status":     "ok" if ny_ms is not None else "timeout",
         },
-        "bxl_to_flask": {
+        "flask_to_bxl": {
             "latency_ms": bxl_ms,
             "status":     "ok" if bxl_ms is not None else "timeout",
+        },
+        "ny_to_bxl": {
+            "latency_ms": ny_to_bxl_ms,
+            "status":     ny_to_bxl_status,
         },
     })
 
