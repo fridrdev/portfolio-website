@@ -5,19 +5,29 @@ const ENDPOINT = 'https://oku2jon40l.execute-api.eu-west-3.amazonaws.com/recomme
 async function singleRequest(idx) {
   const start = performance.now()
   try {
-    const res = await fetch(ENDPOINT)
+    const res = await fetch(ENDPOINT, {
+      method: 'GET',
+      mode: 'cors',
+      headers: { 'Accept': 'application/json' },
+    })
     const ms = Math.round(performance.now() - start)
-    const type = res.status >= 500 ? 'error' : ms > 1000 ? 'slow' : 'ok'
+    let type
+    if (res.status >= 500)      type = 'error'
+    else if (res.status === 401) type = 'auth'
+    else if (ms > 1000)          type = 'slow'
+    else                         type = 'ok'
     return { idx, status: res.status, ms, type }
   } catch (e) {
     const ms = Math.round(performance.now() - start)
-    return { idx, status: 'ERR', ms, type: 'error', error: e.message }
+    return { idx, status: 'NETWORK ERR', ms, type: 'network', error: e.message }
   }
 }
 
 function TypeBadge({ type }) {
-  if (type === 'ok') return <span className="px-1.5 py-0.5 rounded text-[10px] bg-green-900/40 text-green-400 border border-green-800">OK</span>
-  if (type === 'slow') return <span className="px-1.5 py-0.5 rounded text-[10px] bg-orange-900/40 text-orange-400 border border-orange-800">SLOW</span>
+  if (type === 'ok')      return <span className="px-1.5 py-0.5 rounded text-[10px] bg-green-900/40 text-green-400 border border-green-800">OK</span>
+  if (type === 'slow')    return <span className="px-1.5 py-0.5 rounded text-[10px] bg-orange-900/40 text-orange-400 border border-orange-800">SLOW</span>
+  if (type === 'auth')    return <span className="px-1.5 py-0.5 rounded text-[10px] bg-yellow-900/40 text-yellow-400 border border-yellow-800">AUTH</span>
+  if (type === 'network') return <span className="px-1.5 py-0.5 rounded text-[10px] bg-red-900/40 text-red-400 border border-red-800">NETWORK ERR</span>
   return <span className="px-1.5 py-0.5 rounded text-[10px] bg-red-900/40 text-red-400 border border-red-800">ERROR</span>
 }
 
@@ -30,7 +40,7 @@ export default function TabLoadTest({ onComplete }) {
 
   const stats = results.length > 0 ? {
     avg: Math.round(results.reduce((a, r) => a + r.ms, 0) / results.length),
-    errors: Math.round(results.filter(r => r.type === 'error').length / results.length * 100),
+    errors: Math.round(results.filter(r => r.type === 'error' || r.type === 'network').length / results.length * 100),
     slow: Math.round(results.filter(r => r.type === 'slow').length / results.length * 100),
     total: results.length,
     timestamp: new Date().toLocaleString('nl-BE'),
@@ -56,7 +66,7 @@ export default function TabLoadTest({ onComplete }) {
     if (!abortRef.current && collected.length > 0 && onComplete) {
       const finalStats = {
         avg: Math.round(collected.reduce((a, r) => a + r.ms, 0) / collected.length),
-        errors: Math.round(collected.filter(r => r.type === 'error').length / collected.length * 100),
+        errors: Math.round(collected.filter(r => r.type === 'error' || r.type === 'network').length / collected.length * 100),
         slow: Math.round(collected.filter(r => r.type === 'slow').length / collected.length * 100),
         total: collected.length,
         timestamp: new Date().toLocaleString('nl-BE'),
