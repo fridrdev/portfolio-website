@@ -60,8 +60,10 @@ export default function TabDashboards() {
         <iframe
           src={GRAFANA_URL}
           width="100%"
-          height="800"
+          height="700"
           frameBorder="0"
+          scrolling="no"
+          style={{ border: 'none', width: '100%', height: '700px' }}
           title="Grafana — VRT Distributed Tracing live dashboard"
           allow="fullscreen"
           sandbox="allow-same-origin allow-scripts"
