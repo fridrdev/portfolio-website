@@ -29,6 +29,16 @@ export default function TabDashboards() {
         />
       </div>
 
+      {/* Uitlegblok */}
+      <div className="rounded-xl border border-[#2D3148] bg-[#12151F] p-5 space-y-2">
+        <h4 className="text-sm font-semibold text-white">Over dit dashboard</h4>
+        <p className="text-sm text-gray-400 leading-relaxed">
+          Dit dashboard toont live telemetrie van de VRT recommendation-service, gemeten tijdens load tests op AWS Lambda.
+          Data wordt verzameld via AWS X-Ray en CloudWatch, en gevisualiseerd via Grafana.
+          De grafieken tonen latentie, errors en invocations in real-time.
+        </p>
+      </div>
+
     </div>
   )
 }
