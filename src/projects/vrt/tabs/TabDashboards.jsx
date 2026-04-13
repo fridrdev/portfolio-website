@@ -64,7 +64,7 @@ export default function TabDashboards() {
           frameBorder="0"
           title="Grafana — VRT Distributed Tracing live dashboard"
           allow="fullscreen"
-          sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
+          sandbox="allow-same-origin allow-scripts"
         />
       </div>
 
