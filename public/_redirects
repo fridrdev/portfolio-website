@@ -1,2 +1,3 @@
+/api/recommendation-service https://oku2jon40l.execute-api.eu-west-3.amazonaws.com/recommendation-service 200
 /api/* https://api.fridrdev.uk/:splat 200
 /* /index.html 200
