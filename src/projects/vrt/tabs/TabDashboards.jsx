@@ -1,8 +1,5 @@
-import { useState } from 'react'
-
-// Drop grafana-dashboard.png into the /public folder and it appears automatically.
-// No import needed — the file is served at /grafana-dashboard.png by Vite.
-const SCREENSHOT_URL = '/grafana-dashboard.png'
+const GRAFANA_URL =
+  'https://grafana.fridrdev.uk/d/adswlgx/vrt-tracing-dashboard?orgId=1&kiosk=tv&theme=dark&refresh=30s'
 
 const CARDS = [
   {
@@ -47,8 +44,6 @@ const CARDS = [
 ]
 
 export default function TabDashboards() {
-  const [imgFailed, setImgFailed] = useState(false)
-
   return (
     <div className="space-y-6">
 
@@ -56,36 +51,21 @@ export default function TabDashboards() {
       <div>
         <h3 className="text-lg font-semibold text-white">Live Monitoring Dashboards</h3>
         <p className="text-sm text-gray-500 mt-1 leading-relaxed">
-          Echte data van de recommendation-service tijdens load tests —
-          gemeten via Grafana + AWS CloudWatch
+          Live monitoring van VRT distributed tracing via Grafana + AWS CloudWatch
         </p>
       </div>
 
-      {/* Screenshot — shows image when present, placeholder when not */}
+      {/* Grafana iframe */}
       <div className="rounded-xl border border-[#2D3148] overflow-hidden bg-[#0A0C14]">
-        {imgFailed ? (
-          <div className="flex flex-col items-center justify-center gap-3 py-14 px-6 text-center">
-            <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-[#1A1D27] border border-[#2D3148]">
-              <svg className="h-7 w-7 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
-              </svg>
-            </div>
-            <div>
-              <p className="text-sm font-medium text-gray-400">Screenshot niet gevonden</p>
-              <p className="text-xs text-gray-600 mt-1">
-                Sla de Grafana screenshot op als{' '}
-                <span className="font-mono text-[#FF6600]">public/grafana-dashboard.png</span>
-              </p>
-            </div>
-          </div>
-        ) : (
-          <img
-            src={SCREENSHOT_URL}
-            alt="Grafana dashboard – VRT Distributed Tracing"
-            className="w-full block"
-            onError={() => setImgFailed(true)}
-          />
-        )}
+        <iframe
+          src={GRAFANA_URL}
+          width="100%"
+          height="800"
+          frameBorder="0"
+          title="Grafana — VRT Distributed Tracing live dashboard"
+          allow="fullscreen"
+          sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
+        />
       </div>
 
       {/* Explanation cards */}
@@ -113,11 +93,6 @@ export default function TabDashboards() {
           </div>
         ))}
       </div>
-
-      {/* Timestamp */}
-      <p className="text-center text-xs text-gray-600">
-        Screenshot genomen op 9 april 2026 tijdens load test
-      </p>
 
     </div>
   )
