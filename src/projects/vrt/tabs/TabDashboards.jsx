@@ -22,9 +22,9 @@ export default function TabDashboards() {
           src="https://grafana.fridrdev.uk/d/adswlgx/vrt-tracing-dashboard?orgId=1&theme=dark&refresh=30s"
           style={{
             width: '100%',
-            height: 'calc(100% + 60px)',
+            height: 'calc(100% + 90px)',
             border: 'none',
-            marginTop: '-60px',
+            marginTop: '-90px',
           }}
         />
       </div>
