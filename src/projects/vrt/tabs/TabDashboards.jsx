@@ -56,7 +56,17 @@ export default function TabDashboards() {
       </div>
 
       {/* Grafana iframe */}
-      <div className="rounded-xl border border-[#2D3148] overflow-hidden bg-[#0A0C14]">
+      <div className="rounded-xl border border-[#2D3148] overflow-hidden bg-[#0A0C14]" style={{ position: 'relative' }}>
+        <div style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          height: '120px',
+          backgroundColor: '#111',
+          zIndex: 10,
+          pointerEvents: 'none',
+        }} />
         <iframe
           src={GRAFANA_URL}
           width="100%"

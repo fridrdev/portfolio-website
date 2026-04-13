@@ -13,7 +13,17 @@ export default function TabMonitoring() {
       </div>
 
       {/* Grafana iframe */}
-      <div className="rounded-xl border border-[#2D3148] overflow-hidden">
+      <div className="rounded-xl border border-[#2D3148] overflow-hidden" style={{ position: 'relative' }}>
+        <div style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          height: '120px',
+          backgroundColor: '#111',
+          zIndex: 10,
+          pointerEvents: 'none',
+        }} />
         <iframe
           src="https://grafana.fridrdev.uk/d/rYdddlPWk/node-exporter-full?orgId=1&kiosk=tv&theme=dark&refresh=30s"
           width="100%"
