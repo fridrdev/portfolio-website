@@ -1,10 +1,9 @@
 import { useState, useRef } from 'react'
 
-const BASE_URL = '/api'
-const ENDPOINT = '/recommendation-service'
+const AWS = 'https://oku2jon40l.execute-api.eu-west-3.amazonaws.com'
 
 async function singleRequest(idx) {
-  const url = `${BASE_URL}${ENDPOINT}`
+  const url = `${AWS}/recommendation-service`
   console.log(`[load-test #${idx}] fetching`, url)
   const start = performance.now()
   try {

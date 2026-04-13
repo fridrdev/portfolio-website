@@ -1,12 +1,12 @@
 import { useState, useCallback } from 'react'
 
-const BASE_URL = '/api'
+const AWS = 'https://oku2jon40l.execute-api.eu-west-3.amazonaws.com'
 
 const SERVICES = [
   {
     id: 'video',
     name: 'Video Service',
-    endpoint: '/video-service',
+    url: `${AWS}/video-service`,
     method: 'GET',
     description: 'Haalt video metadata op uit de catalog.',
     color: '#3B82F6',
@@ -14,7 +14,7 @@ const SERVICES = [
   {
     id: 'user',
     name: 'User Service',
-    endpoint: '/user-service',
+    url: `${AWS}/user-service`,
     method: 'GET',
     description: 'Beheert gebruikersprofielen en sessies.',
     color: '#8B5CF6',
@@ -22,7 +22,7 @@ const SERVICES = [
   {
     id: 'auth',
     name: 'Auth Service',
-    endpoint: '/auth-service',
+    url: `${AWS}/auth-service`,
     method: 'GET',
     description: '10% kans op 401 Unauthorized response.',
     color: '#EF4444',
@@ -31,7 +31,7 @@ const SERVICES = [
   {
     id: 'analytics',
     name: 'Analytics Service',
-    endpoint: '/analytics-service',
+    url: `${AWS}/analytics-service`,
     method: 'GET',
     description: 'Verwerkt events. 300–500ms artificiële latentie.',
     color: '#10B981',
@@ -40,7 +40,7 @@ const SERVICES = [
   {
     id: 'recommendation',
     name: 'Recommendation Service',
-    endpoint: '/recommendation-service',
+    url: `${AWS}/recommendation-service`,
     method: 'GET',
     description: '30% kans op 2s delay, 20% kans op 500 error.',
     color: '#F59E0B',
@@ -132,7 +132,7 @@ async function callService(service) {
   const start = performance.now()
   const timestamp = new Date().toLocaleTimeString('nl-BE')
   try {
-    const res = await fetch(`${BASE_URL}${service.endpoint}`)
+    const res = await fetch(service.url)
     const ms = Math.round(performance.now() - start)
     let body = null
     try { body = await res.json() } catch { body = null }
