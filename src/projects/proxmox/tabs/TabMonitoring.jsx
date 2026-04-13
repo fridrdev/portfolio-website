@@ -25,7 +25,7 @@ export default function TabMonitoring() {
           pointerEvents: 'none',
         }} />
         <iframe
-          src="https://grafana.fridrdev.uk/d/rYdddlPWk/node-exporter-full?orgId=1&kiosk=tv&theme=dark&refresh=30s"
+          src="https://viewer:viewer123@grafana.fridrdev.uk/d/rYdddlPWk/node-exporter-full?orgId=1&kiosk=tv&theme=dark&refresh=30s"
           width="100%"
           height="800"
           frameBorder="0"

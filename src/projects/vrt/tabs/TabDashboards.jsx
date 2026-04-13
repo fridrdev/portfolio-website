@@ -19,7 +19,7 @@ export default function TabDashboards() {
         borderRadius: '8px',
       }}>
         <iframe
-          src="https://grafana.fridrdev.uk/d/adswlgx/vrt-tracing-dashboard?orgId=1&theme=dark&refresh=30s"
+          src="https://viewer:viewer123@grafana.fridrdev.uk/d/adswlgx/vrt-tracing-dashboard?orgId=1&theme=dark&refresh=30s"
           style={{
             width: '100%',
             height: 'calc(100% + 90px)',
