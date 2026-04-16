@@ -12,23 +12,22 @@ export default function TabMonitoring() {
         </p>
       </div>
 
-      {/* Grafana iframe */}
-      <div className="rounded-xl border border-[#2D3148] overflow-hidden" style={{ position: 'relative' }}>
-        <div style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
-          height: '120px',
-          backgroundColor: '#111',
-          zIndex: 10,
-          pointerEvents: 'none',
-        }} />
+      {/* Grafana iframe — toolbar verborgen via negatieve marginTop */}
+      <div className="rounded-xl border border-[#2D3148]" style={{
+        width: '100%',
+        height: '800px',
+        overflow: 'hidden',
+        position: 'relative',
+        borderRadius: '8px',
+      }}>
         <iframe
           src="https://grafana.fridrdev.uk/d/rYdddlPWk/node-exporter-full?orgId=1&theme=dark&refresh=30s"
-          width="100%"
-          height="800"
-          frameBorder="0"
+          style={{
+            width: '100%',
+            height: 'calc(100% + 90px)',
+            border: 'none',
+            marginTop: '-90px',
+          }}
           title="Grafana — proxmox-ny live dashboard"
           allow="fullscreen"
           sandbox="allow-same-origin allow-scripts"
